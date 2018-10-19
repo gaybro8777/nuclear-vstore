@@ -27,6 +27,8 @@ namespace CloningTool.CloneStrategies
 
         private IDictionary<long, ApiListTemplate> _destTemplates;
         private IDictionary<long, ApiListTemplate> _sourceTemplates;
+        private long _createdTemplatesVersionsCount;
+        private long _createdTemplatesCount;
 
         public CloneTemplates(
             CloningToolOptions options,
@@ -46,6 +48,7 @@ namespace CloningTool.CloneStrategies
 
         public async Task<bool> ExecuteAsync()
         {
+            ResetCounters();
             await EnsureTemplatesAreLoaded();
             if (_destTemplates.Count > 0)
             {
@@ -96,6 +99,7 @@ namespace CloningTool.CloneStrategies
                     });
 
             _logger.LogInformation("Cloned templates: {cloned} of {total}", clonedCount, _sourceTemplates.Count);
+            _logger.LogInformation("Total created templates: {created} ({versions} versions created)", _createdTemplatesCount, _createdTemplatesVersionsCount);
             if (failedIds.Count > 0)
             {
                 _logger.LogWarning("Id's of failed templates: {list}", failedIds);
@@ -113,14 +117,13 @@ namespace CloningTool.CloneStrategies
 
         private async Task CloneTemplateAsync(ApiListTemplate template)
         {
-            var templateIdStr = template.Id.ToString();
-            var sourceTemplateVersions = (await SourceRestClient.GetTemplateVersionsAsync(templateIdStr))
+            var sourceTemplateVersions = (await SourceRestClient.GetTemplateVersionsAsync(template.Id))
                                          .OrderBy(v => v.VersionIndex)
                                          .ToList();
 
             _logger.LogInformation("Source template {id} has {count} versions", template.Id, sourceTemplateVersions.Count);
 
-            var destTemplateVersions = (await DestRestClient.GetTemplateVersionsAsync(templateIdStr))
+            var destTemplateVersions = (await DestRestClient.GetTemplateVersionsAsync(template.Id))
                                        .OrderBy(v => v.VersionIndex)
                                        .ToList();
 
@@ -130,16 +133,18 @@ namespace CloningTool.CloneStrategies
                 var destTemplateVersion = string.Empty;
                 foreach (var sourceTemplateVersion in sourceTemplateVersions)
                 {
-                    var sourceTemplate = await SourceRestClient.GetTemplateAsync(templateIdStr, sourceTemplateVersion.VersionId);
+                    var sourceTemplate = await SourceRestClient.GetTemplateAsync(template.Id, sourceTemplateVersion.VersionId);
                     if (sourceTemplateVersion.VersionIndex == 0)
                     {
-                        destTemplateVersion = await DestRestClient.CreateTemplateAsync(templateIdStr, sourceTemplate);
+                        destTemplateVersion = await DestRestClient.CreateTemplateAsync(template.Id, sourceTemplate);
+                        Interlocked.Increment(ref _createdTemplatesCount);
                     }
                     else
                     {
                         destTemplateVersion = await DestRestClient.UpdateTemplateAsync(sourceTemplate, destTemplateVersion);
                     }
 
+                    Interlocked.Increment(ref _createdTemplatesVersionsCount);
                     _logger.LogInformation(
                         "Source template {id} {index}-th version {sourceVersion} has been cloned into destination with version {destVersion}",
                         template.Id,
@@ -153,20 +158,20 @@ namespace CloningTool.CloneStrategies
                 _logger.LogInformation("Template {id} already exists in destination with {count} versions", template.Id, destTemplateVersions.Count);
                 if (destTemplateVersions.Count > sourceTemplateVersions.Count)
                 {
-                    throw new InvalidOperationException("Template with id = " + templateIdStr + " has more versions in destination than in source");
+                    throw new InvalidOperationException($"Template {template.Id} has more versions in destination than in source");
                 }
 
                 if (destTemplateVersions.Count == sourceTemplateVersions.Count)
                 {
-                    var destTemplate = await DestRestClient.GetTemplateAsync(templateIdStr);
-                    var sourceTemplate = await SourceRestClient.GetTemplateAsync(templateIdStr);
+                    var destTemplate = await DestRestClient.GetTemplateAsync(template.Id);
+                    var sourceTemplate = await SourceRestClient.GetTemplateAsync(template.Id);
                     if (CompareTemplateDescriptors(destTemplate, sourceTemplate))
                     {
                         _logger.LogInformation("Templates with id {id} have equal last version and version count in source and destination", template.Id);
                     }
                     else
                     {
-                        throw new InvalidOperationException("Templates with id = " + templateIdStr + " have unequal last version");
+                        throw new InvalidOperationException($"Templates {template.Id} have unequal last version");
                     }
                 }
                 else
@@ -176,9 +181,10 @@ namespace CloningTool.CloneStrategies
                     for (var i = destTemplateVersions.Count; i < sourceTemplateVersions.Count; ++i)
                     {
                         var sourceTemplateVersion = sourceTemplateVersions[i];
-                        var sourceTemplate = await SourceRestClient.GetTemplateAsync(templateIdStr, sourceTemplateVersion.VersionId);
+                        var sourceTemplate = await SourceRestClient.GetTemplateAsync(template.Id, sourceTemplateVersion.VersionId);
                         destTemplateVersion = await DestRestClient.UpdateTemplateAsync(sourceTemplate, destTemplateVersion);
 
+                        Interlocked.Increment(ref _createdTemplatesVersionsCount);
                         _logger.LogInformation(
                             "Source template {id} {index}-th version {sourceVersion} has been cloned into destination with version {destVersion}",
                             template.Id,
@@ -265,6 +271,12 @@ namespace CloningTool.CloneStrategies
             }
 
             return true;
+        }
+
+        private void ResetCounters()
+        {
+            _createdTemplatesCount = 0L;
+            _createdTemplatesVersionsCount = 0L;
         }
     }
 }

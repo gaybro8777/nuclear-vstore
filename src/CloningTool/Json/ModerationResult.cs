@@ -9,5 +9,7 @@ namespace CloningTool.Json
         public ModerationStatus Resolution => Status;
 
         public List<ModerationRemark> Remarks { get; set; }
+
+        public bool ShouldSerializeStatus() => false;
     }
 }

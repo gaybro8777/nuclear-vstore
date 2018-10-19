@@ -6,8 +6,6 @@ namespace CloningTool
     {
         public CloneMode Mode { get; set; }
 
-        public bool FetchAdvertisementBeforeClone { get; set; }
-
         public bool OverwriteUnequalRemarks { get; set; } = false;
 
         public int MaxDegreeOfParallelism { get; set; }

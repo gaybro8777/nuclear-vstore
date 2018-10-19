@@ -6,7 +6,7 @@ mono: none
 dotnet: 2.1
 script:
  - dotnet restore
- - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutputDirectory="`pwd`/"
+ - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput="`pwd`/"
 
 after_success:
  - curl -s https://codecov.io/bash > codecov

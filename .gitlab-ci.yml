@@ -20,7 +20,7 @@ build:app:
   when: always
   script:
     - dotnet restore --runtime ubuntu.16.04-x64
-    - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=lcov /p:CoverletOutputDirectory="`pwd`/coverage"
+    - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=lcov /p:CoverletOutput="`pwd`/coverage/"
     - dotnet publish src/VStore.Host --configuration Release --runtime ubuntu.16.04-x64 --output ../../publish/vstore
     - dotnet publish src/VStore.Worker --configuration Release --runtime ubuntu.16.04-x64 --output ../../publish/vstore-worker
     - dotnet restore --runtime alpine.3.7-x64

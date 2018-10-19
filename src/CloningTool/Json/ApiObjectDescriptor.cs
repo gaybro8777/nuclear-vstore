@@ -19,5 +19,10 @@ namespace CloningTool.Json
         public DateTime LastModified { get; set; }
         public FirmDescriptor Firm { get; set; }
         public ModerationResult Moderation { get; set; }
+        public IReadOnlyCollection<ObjectOrder> Orders { get; set; }
+        public IReadOnlyCollection<ObjectRubric> Rubrics { get; set; }
+        public IReadOnlyCollection<ObjectProject> DstProjects { get; set; }
+
+        public bool ShouldSerializeModeration() => false;
     }
 }

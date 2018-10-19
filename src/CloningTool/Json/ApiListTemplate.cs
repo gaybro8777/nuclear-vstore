@@ -6,8 +6,6 @@
 
         public string Name { get; set; }
 
-        public string VersionId { get; set; }
-
         public bool IsWhiteListed { get; set; }
 
         public bool IsDeleted { get; set; }
