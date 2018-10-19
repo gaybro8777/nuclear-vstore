@@ -18,6 +18,8 @@ namespace CloningTool
 
         public string AdvertisementIdsFilename { get; set; }
 
+        public long? AdvertisementsProjectId { get; set; }
+
         public long? AdvertisementsTemplateId { get; set; }
 
         public string SourceApiToken { get; set; }

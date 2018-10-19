@@ -78,6 +78,11 @@ namespace CloningTool.CloneStrategies
                 return false;
             }
 
+            if (_options.AdvertisementsProjectId.HasValue)
+            {
+                _logger.LogInformation("Fetching all ads for project {projectId}", _options.AdvertisementsProjectId.Value);
+            }
+
             List<ApiListAdvertisement> advertisements;
             if (string.IsNullOrEmpty(_options.AdvertisementIdsFilename))
             {
@@ -92,7 +97,11 @@ namespace CloningTool.CloneStrategies
 
                     if (_sourceTemplates.ContainsKey(templateId))
                     {
-                        var templateAds = await SourceRestClient.GetAdvertisementsByTemplateAsync(templateId, _isTruncatedCloning ? _options.TruncatedCloneSize : (int?)null);
+                        var templateAds = await SourceRestClient.GetAdvertisementsByTemplateAsync(
+                                              templateId,
+                                              _isTruncatedCloning ? _options.TruncatedCloneSize : (int?)null,
+                                              _options.AdvertisementsProjectId);
+
                         _logger.LogInformation("Found {count} ads for template {templateId}", templateAds.Count, templateId);
                         advertisements.AddRange(_options.AdvertisementsCreatedAtBeginDate.HasValue
                                                 ? templateAds.Where(a => a.CreatedAt >= _options.AdvertisementsCreatedAtBeginDate.Value)

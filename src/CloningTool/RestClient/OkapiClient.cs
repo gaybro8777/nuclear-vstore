@@ -305,7 +305,7 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task<IReadOnlyCollection<ApiListAdvertisement>> GetAdvertisementsByTemplateAsync(long templateId, int? fetchSize)
+        public async Task<IReadOnlyCollection<ApiListAdvertisement>> GetAdvertisementsByTemplateAsync(long templateId, int? fetchSize, long? projectId)
         {
             var server = string.Empty;
             var requestId = string.Empty;
@@ -315,7 +315,7 @@ namespace CloningTool.RestClient
             {
                 for (var pageNum = 1; ; ++pageNum)
                 {
-                    var methodUri = new Uri(_searchUri, $"am?template={templateId}&count={fetchSize ?? ApiFetchMaxSize}&page={pageNum}&sort=createdAt:desc");
+                    var methodUri = new Uri(_searchUri, $"am?template={templateId}&count={fetchSize ?? ApiFetchMaxSize}&page={pageNum}&sort=createdAt:desc&firmProject={projectId}");
                     using (var response = await _authorizedHttpClient.GetAsync(methodUri))
                     {
                         (stringResponse, server, requestId) = await HandleResponse(response);
