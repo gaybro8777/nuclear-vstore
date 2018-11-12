@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
 namespace NuClear.VStore.Http.Core.ActionResults
 {
@@ -6,7 +7,7 @@ namespace NuClear.VStore.Http.Core.ActionResults
     {
         public RequestTooLargeContentResult(string message)
         {
-            StatusCode = 413;
+            StatusCode = StatusCodes.Status413PayloadTooLarge;
             Content = message;
         }
     }

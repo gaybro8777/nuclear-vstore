@@ -75,6 +75,10 @@ namespace NuClear.VStore.Http.Core.Controllers
             => new RequestTooLargeContentResult(message) { ContentType = ContentType.PlainText };
 
         [NonAction]
+        public FailedDependencyContentResult FailedDependency(string message)
+            => new FailedDependencyContentResult(message) { ContentType = ContentType.PlainText };
+
+        [NonAction]
         public ServiceUnavailableResult ServiceUnavailable(string message)
             => new ServiceUnavailableResult(message) { ContentType = ContentType.PlainText };
     }

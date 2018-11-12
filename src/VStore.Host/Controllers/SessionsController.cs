@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Net.Http.Headers;
 
 using Newtonsoft.Json.Linq;
 
@@ -17,7 +18,6 @@ using NuClear.VStore.DataContract;
 using NuClear.VStore.Descriptors;
 using NuClear.VStore.Descriptors.Objects;
 using NuClear.VStore.Descriptors.Sessions;
-using NuClear.VStore.Http;
 using NuClear.VStore.Http.Core.Controllers;
 using NuClear.VStore.Http.Core.Extensions;
 using NuClear.VStore.Http.Core.Filters;
@@ -27,8 +27,6 @@ using NuClear.VStore.S3;
 using NuClear.VStore.Sessions;
 using NuClear.VStore.Sessions.Fetch;
 using NuClear.VStore.Sessions.Upload;
-
-using HeaderNames = Microsoft.Net.Http.Headers.HeaderNames;
 
 namespace NuClear.VStore.Host.Controllers
 {
@@ -365,7 +363,7 @@ namespace NuClear.VStore.Host.Controllers
         /// <returns>Raw value of fetched file</returns>
         [AllowAnonymous]
         [HttpPost("{sessionId:guid}/fetch/{templateCode:int}")]
-        [Consumes(ContentType.Json)]
+        [Consumes(Http.ContentType.Json)]
         [ProducesResponseType(typeof(UploadedFileValue), 201)]
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 404)]
@@ -407,6 +405,14 @@ namespace NuClear.VStore.Host.Controllers
             catch (SessionExpiredException ex)
             {
                 return Gone(ex.ExpiredAt);
+            }
+            catch (FetchRequestException ex)
+            {
+                return FailedDependency($"Fetch request failed with status code {ex.StatusCode} and content: {ex.Message}");
+            }
+            catch (FetchResponseContentTypeInvalidException ex)
+            {
+                return FailedDependency(ex.Message);
             }
             catch (InvalidBinaryException ex)
             {

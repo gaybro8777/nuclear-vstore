@@ -310,6 +310,8 @@ namespace NuClear.VStore.Sessions
         /// <exception cref="SessionExpiredException">Specified session is expired</exception>
         /// <exception cref="S3Exception">Error making request to S3</exception>
         /// <exception cref="InvalidBinaryException">Binary does not meet template's constraints</exception>
+        /// <exception cref="FetchRequestException">Unsuccessful fetch response status code</exception>
+        /// <exception cref="FetchResponseContentTypeInvalidException">Content type in response is not specified</exception>
         /// <returns>Fetched file key</returns>
         public async Task<string> FetchFile(Guid sessionId, int templateCode, FetchParameters fetchParameters)
         {
