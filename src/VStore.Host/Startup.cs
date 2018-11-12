@@ -88,6 +88,7 @@ namespace NuClear.VStore.Host
                  .Configure<CephOptions>(_configuration.GetSection("Ceph"))
                  .Configure<DistributedLockOptions>(_configuration.GetSection("DistributedLocks"))
                  .Configure<UploadFileOptions>(_configuration.GetSection("VStore"))
+                 .Configure<FetchFileOptions>(_configuration.GetSection("Fetch"))
                  .Configure<SessionOptions>(_configuration.GetSection("VStore"))
                  .Configure<CdnOptions>(_configuration.GetSection("VStore"))
                  .Configure<JwtOptions>(jwtConfiguration)
