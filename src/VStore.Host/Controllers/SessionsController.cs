@@ -406,11 +406,7 @@ namespace NuClear.VStore.Host.Controllers
             {
                 return Gone(ex.ExpiredAt);
             }
-            catch (FetchRequestException ex)
-            {
-                return FailedDependency($"Fetch request failed with status code {ex.StatusCode} and content: {ex.Message}");
-            }
-            catch (FetchResponseContentTypeInvalidException ex)
+            catch (FetchFailedException ex)
             {
                 return FailedDependency(ex.Message);
             }

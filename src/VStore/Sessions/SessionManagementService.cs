@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 
 using Amazon.S3;
@@ -26,6 +27,8 @@ using NuClear.VStore.Sessions.ContentValidation.Errors;
 using NuClear.VStore.Sessions.Fetch;
 using NuClear.VStore.Sessions.Upload;
 using NuClear.VStore.Templates;
+
+using Polly.Timeout;
 
 using Prometheus.Client;
 
@@ -310,8 +313,7 @@ namespace NuClear.VStore.Sessions
         /// <exception cref="SessionExpiredException">Specified session is expired</exception>
         /// <exception cref="S3Exception">Error making request to S3</exception>
         /// <exception cref="InvalidBinaryException">Binary does not meet template's constraints</exception>
-        /// <exception cref="FetchRequestException">Unsuccessful fetch response status code</exception>
-        /// <exception cref="FetchResponseContentTypeInvalidException">Content type in response is not specified</exception>
+        /// <exception cref="FetchFailedException">Fetch request failed</exception>
         /// <returns>Fetched file key</returns>
         public async Task<string> FetchFile(Guid sessionId, int templateCode, FetchParameters fetchParameters)
         {
@@ -321,11 +323,13 @@ namespace NuClear.VStore.Sessions
                     $"Fetch URI must be a valid absolute URI with '{Uri.UriSchemeHttp}' or '{Uri.UriSchemeHttps}' scheme");
             }
 
+            await _sessionStorageReader.GetSessionDescriptor(sessionId);    // Firstly ensure that specified session exists
             MultipartUploadSession uploadSession = null;
             try
             {
                 var (stream, mediaType) = await _fetchClient.FetchAsync(fetchUri);
-                uploadSession = await InitiateMultipartUpload(sessionId, templateCode, new GenericUploadedFileMetadata(FileType.NotSet, fetchParameters.FileName, mediaType, stream.Length));
+                var fileMetadata = new GenericUploadedFileMetadata(FileType.NotSet, fetchParameters.FileName, mediaType, stream.Length);
+                uploadSession = await InitiateMultipartUpload(sessionId, templateCode, fileMetadata);
                 await UploadFilePart(uploadSession, stream, templateCode);
                 var uploadedFileKey = await CompleteMultipartUpload(uploadSession);
                 return uploadedFileKey;
@@ -333,6 +337,22 @@ namespace NuClear.VStore.Sessions
             catch (FetchResponseTooLargeException ex)
             {
                 throw new InvalidBinaryException(templateCode, new BinaryTooLargeError(ex.ContentLength));
+            }
+            catch (FetchRequestException ex)
+            {
+                throw new FetchFailedException($"Fetch request failed with status code {ex.StatusCode} and content: {ex.Message}");
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new FetchFailedException($"Fetch request failed: {ex.Message}");
+            }
+            catch (TimeoutRejectedException)
+            {
+                throw new FetchFailedException("Fetch request failed: request timeout exceeded");
+            }
+            catch (FetchResponseContentTypeInvalidException ex)
+            {
+                throw new FetchFailedException($"Fetch request failed: {ex.Message}");
             }
             finally
             {

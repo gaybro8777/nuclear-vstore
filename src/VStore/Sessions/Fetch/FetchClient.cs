@@ -40,10 +40,9 @@ namespace NuClear.VStore.Sessions.Fetch
             _fetchDurationMsMetric = metricsProvider.GetFetchDurationMsMetric();
             _interruptedFetchRequestsMetric = metricsProvider.GetInterruptedFetchRequestsMetric();
             var timeoutPolicy = Policy.TimeoutAsync(TimeSpan.FromMilliseconds(options.MaxTimeoutMs), TimeoutStrategy.Optimistic);
-            var retryPolicy =
-                Policy.Handle<HttpRequestException>()
-                      .Or<TimeoutRejectedException>()
-                      .RetryAsync(_maxRetryCount, (ex, retryCount, context) => RetryHandler(context, retryCount, ex));
+            var retryPolicy = Policy.Handle<HttpRequestException>()
+                                    .Or<TimeoutRejectedException>()
+                                    .RetryAsync(_maxRetryCount, RetryHandler);
 
             _timeoutWithRetryPolicy = retryPolicy.Wrap(timeoutPolicy);
         }
@@ -57,12 +56,12 @@ namespace NuClear.VStore.Sessions.Fetch
             using (var response = await _timeoutWithRetryPolicy.ExecuteAsync(FetchAction, policyContext, CancellationToken.None))
             {
                 stopwatch.Stop();
-                _fetchDurationMsMetric.Labels(fetchUri.Host, HttpMethod.Get.ToString()).Observe(stopwatch.ElapsedMilliseconds);
+                _fetchDurationMsMetric.Labels(fetchUri.Host).Observe(stopwatch.ElapsedMilliseconds);
                 _logger.LogDebug("Fetch request executed in {elapsedMs} ms", stopwatch.ElapsedMilliseconds);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _fetchErrorsMetric.Labels(fetchUri.Host, HttpMethod.Get.ToString()).Inc();
+                    _fetchErrorsMetric.Inc();
                     var content = await response.Content.ReadAsStringAsync();
                     _logger.LogError("Got status {status} on {method} request to {url} with content: {content}", response.StatusCode, HttpMethod.Get, fetchUri, content);
                     throw new FetchRequestException(response.StatusCode, content);
@@ -78,14 +77,20 @@ namespace NuClear.VStore.Sessions.Fetch
                     throw new FetchResponseContentTypeInvalidException("Content type in response is not specified");
                 }
 
-                return (await response.Content.ReadAsStreamAsync(), response.Content.Headers.ContentType.MediaType);
+                var memoryStream = new MemoryStream();
+                using (var responseStream = await response.Content.ReadAsStreamAsync())
+                {
+                    await responseStream.CopyToAsync(memoryStream);
+                }
+
+                return (memoryStream, response.Content.Headers.ContentType.MediaType);
             }
         }
 
         private static async Task<HttpResponseMessage> FetchAction(Context context, CancellationToken ct)
             => await HttpClient.GetAsync(context.OperationKey, HttpCompletionOption.ResponseHeadersRead, ct);
 
-        private void RetryHandler(Context context, int retryCount, Exception ex)
+        private void RetryHandler(Exception ex, int retryCount, Context context)
         {
             _logger.LogWarning(
                 "Got an exception while fetching {url}. Retry count: '{retryCount}'. Exception message: {exceptionMessage}",
@@ -93,10 +98,10 @@ namespace NuClear.VStore.Sessions.Fetch
                 retryCount,
                 ex.InnerException?.Message ?? ex.Message);
 
-            _fetchRetriesMetric.Labels(context.OperationKey).Inc();
+            _fetchRetriesMetric.Inc();
             if (retryCount == _maxRetryCount)
             {
-                _interruptedFetchRequestsMetric.Labels(context.OperationKey).Inc();
+                _interruptedFetchRequestsMetric.Inc();
             }
         }
     }

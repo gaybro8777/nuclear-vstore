@@ -29,8 +29,7 @@ namespace NuClear.VStore.Prometheus
                 string.Join(JoinSeparator, Names.FetchDurationMetric, NonBaseUnits.Milliseconds),
                 "Fetch request duration in milliseconds",
                 new double[] { 5, 10, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 5000, 10000, 15000, 20000 },
-                Names.HostLabel,
-                Names.MethodLabel);
+                Names.HostLabel);
 
         private readonly Counter _requestErrors =
             Metrics.CreateCounter(Names.RequestErrorsMetric, "Request errors count", Names.BackendLabel, Names.TypeLabel, Names.MethodLabel);

@@ -33,7 +33,7 @@ namespace NuClear.VStore.Sessions
         }
 
         /// <summary>
-        /// Fetch session descriptor with metadata
+        /// Fetch session descriptor with metadata (and store it in cache)
         /// </summary>
         /// <param name="sessionId">Session identifier</param>
         /// <exception cref="ObjectNotFoundException">Session not found</exception>
