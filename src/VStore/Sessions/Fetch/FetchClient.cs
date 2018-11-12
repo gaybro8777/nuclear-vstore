@@ -55,7 +55,7 @@ namespace NuClear.VStore.Sessions.Fetch
             var stopwatch = Stopwatch.StartNew();
             var policyContext = new Context(fetchUri.ToString());
             _logger.LogDebug("Start fetch request to {url}", fetchUri);
-            using (var response = await _timeoutWithRetryPolicy.ExecuteAsync(async (_, ct) => await HttpClient.GetAsync(fetchUri, HttpCompletionOption.ResponseHeadersRead, ct), policyContext, CancellationToken.None))
+            using (var response = await _timeoutWithRetryPolicy.ExecuteAsync(FetchAction, policyContext, CancellationToken.None))
             {
                 stopwatch.Stop();
                 _fetchDurationMsMetric.Labels(fetchUri.Host, HttpMethod.Get.ToString()).Observe(stopwatch.ElapsedMilliseconds);
@@ -82,6 +82,9 @@ namespace NuClear.VStore.Sessions.Fetch
                 return (await response.Content.ReadAsStreamAsync(), response.Content.Headers.ContentType.MediaType);
             }
         }
+
+        private static async Task<HttpResponseMessage> FetchAction(Context context, CancellationToken ct)
+            => await HttpClient.GetAsync(context.OperationKey, HttpCompletionOption.ResponseHeadersRead, ct);
 
         private void RetryHandler(Context context, int retryCount, Exception ex)
         {

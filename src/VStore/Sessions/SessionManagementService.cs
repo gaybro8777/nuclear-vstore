@@ -315,9 +315,7 @@ namespace NuClear.VStore.Sessions
         /// <returns>Fetched file key</returns>
         public async Task<string> FetchFile(Guid sessionId, int templateCode, FetchParameters fetchParameters)
         {
-            if (!Uri.TryCreate(fetchParameters.Url, UriKind.Absolute, out var fetchUri) ||
-                !fetchUri.IsWellFormedOriginalString() ||
-                fetchUri.Scheme != Uri.UriSchemeHttp && fetchUri.Scheme != Uri.UriSchemeHttps)
+            if (!TryCreateUri(fetchParameters, out var fetchUri))
             {
                 throw new InvalidFetchUrlException(
                     $"Fetch URI must be a valid absolute URI with '{Uri.UriSchemeHttp}' or '{Uri.UriSchemeHttps}' scheme");
@@ -344,6 +342,11 @@ namespace NuClear.VStore.Sessions
                 }
             }
         }
+
+        private static bool TryCreateUri(FetchParameters fetchParameters, out Uri fetchUri)
+            => Uri.TryCreate(fetchParameters.Url, UriKind.Absolute, out fetchUri) &&
+               fetchUri.IsWellFormedOriginalString() &&
+               (fetchUri.Scheme == Uri.UriSchemeHttp || fetchUri.Scheme == Uri.UriSchemeHttps);
 
         private static void EnsureFileMetadataIsValid(IElementDescriptor elementDescriptor, Language language, IUploadedFileMetadata uploadedFileMetadata)
         {
