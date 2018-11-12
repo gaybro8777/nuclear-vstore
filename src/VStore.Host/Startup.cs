@@ -43,6 +43,7 @@ using NuClear.VStore.Options;
 using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
 using NuClear.VStore.Sessions;
+using NuClear.VStore.Sessions.Fetch;
 using NuClear.VStore.Templates;
 
 using Prometheus.Client.Collectors;
@@ -180,6 +181,7 @@ namespace NuClear.VStore.Host
             builder.Register(x => x.Resolve<IOptions<CephOptions>>().Value).SingleInstance();
             builder.Register(x => x.Resolve<IOptions<DistributedLockOptions>>().Value).SingleInstance();
             builder.Register(x => x.Resolve<IOptions<UploadFileOptions>>().Value).SingleInstance();
+            builder.Register(x => x.Resolve<IOptions<FetchFileOptions>>().Value).SingleInstance();
             builder.Register(x => x.Resolve<IOptions<SessionOptions>>().Value).SingleInstance();
             builder.Register(x => x.Resolve<IOptions<CdnOptions>>().Value).SingleInstance();
             builder.Register(x => x.Resolve<IOptions<JwtOptions>>().Value).SingleInstance();
@@ -288,6 +290,7 @@ namespace NuClear.VStore.Host
                    .SingleInstance();
             builder.RegisterType<EventSender>().As<IEventSender>().SingleInstance();
             builder.RegisterType<MetricsProvider>().SingleInstance();
+            builder.RegisterType<FetchClient>().As<IFetchClient>().SingleInstance();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
