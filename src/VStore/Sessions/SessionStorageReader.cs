@@ -32,6 +32,14 @@ namespace NuClear.VStore.Sessions
             _memoryCache = memoryCache;
         }
 
+        /// <summary>
+        /// Fetch session descriptor with metadata
+        /// </summary>
+        /// <param name="sessionId">Session identifier</param>
+        /// <exception cref="ObjectNotFoundException">Session not found</exception>
+        /// <exception cref="SessionExpiredException">Session has expired</exception>
+        /// <exception cref="S3Exception">S3 error</exception>
+        /// <returns>Session descriptor with metadata</returns>
         public async Task<(SessionDescriptor SessionDescriptor, AuthorInfo AuthorInfo, DateTime ExpiresAt)> GetSessionDescriptor(Guid sessionId)
         {
             var result =
@@ -68,10 +76,6 @@ namespace NuClear.VStore.Sessions
                             {
                                 throw new ObjectNotFoundException($"Session '{sessionId}' does not exist");
                             }
-                            catch (SessionExpiredException)
-                            {
-                                throw;
-                            }
                             catch (Exception ex)
                             {
                                 throw new S3Exception(ex);
@@ -91,7 +95,7 @@ namespace NuClear.VStore.Sessions
             var sessionId = key.AsSessionId();
             var (_, _, expiresAt) = _memoryCache.Get<(SessionDescriptor, AuthorInfo, DateTime)>(sessionId);
 
-            if (expiresAt == default(DateTime))
+            if (expiresAt == default)
             {
                 GetObjectMetadataResponse response;
                 try

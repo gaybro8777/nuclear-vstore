@@ -23,6 +23,7 @@ using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
 using NuClear.VStore.Sessions.ContentValidation;
 using NuClear.VStore.Sessions.ContentValidation.Errors;
+using NuClear.VStore.Sessions.Fetch;
 using NuClear.VStore.Sessions.Upload;
 using NuClear.VStore.Templates;
 
@@ -36,6 +37,7 @@ namespace NuClear.VStore.Sessions
         private readonly string _filesBucketName;
         private readonly string _sessionsTopicName;
         private readonly ICephS3Client _cephS3Client;
+        private readonly IFetchClient _fetchClient;
         private readonly SessionStorageReader _sessionStorageReader;
         private readonly ITemplatesStorageReader _templatesStorageReader;
         private readonly IEventSender _eventSender;
@@ -48,6 +50,7 @@ namespace NuClear.VStore.Sessions
             SessionOptions sessionOptions,
             KafkaOptions kafkaOptions,
             ICephS3Client cephS3Client,
+            IFetchClient fetchClient,
             SessionStorageReader sessionStorageReader,
             ITemplatesStorageReader templatesStorageReader,
             IEventSender eventSender,
@@ -58,6 +61,7 @@ namespace NuClear.VStore.Sessions
             _filesBucketName = cephOptions.FilesBucketName;
             _sessionsTopicName = kafkaOptions.SessionEventsTopic;
             _cephS3Client = cephS3Client;
+            _fetchClient = fetchClient;
             _sessionStorageReader = sessionStorageReader;
             _templatesStorageReader = templatesStorageReader;
             _eventSender = eventSender;
@@ -116,6 +120,19 @@ namespace NuClear.VStore.Sessions
             _createdSessionsMetric.Inc();
         }
 
+        /// <summary>
+        /// Initiate upload session
+        /// </summary>
+        /// <param name="sessionId">Session identifier</param>
+        /// <param name="templateCode">Element's template code</param>
+        /// <param name="uploadedFileMetadata">File metadata</param>
+        /// <exception cref="MissingFilenameException">Filename is not specified</exception>
+        /// <exception cref="InvalidTemplateException">Binary content is not expected for specified template code</exception>
+        /// <exception cref="ObjectNotFoundException">Session or template has not been found</exception>
+        /// <exception cref="SessionExpiredException">Specified session is expired</exception>
+        /// <exception cref="S3Exception">Error making request to S3</exception>
+        /// <exception cref="InvalidBinaryException">Binary does not meet template's constraints</exception>
+        /// <returns>Initiated upload session instance</returns>
         public async Task<MultipartUploadSession> InitiateMultipartUpload(
             Guid sessionId,
             int templateCode,
@@ -260,6 +277,7 @@ namespace NuClear.VStore.Sessions
                             MetadataDirective = S3MetadataDirective.REPLACE,
                             CannedACL = S3CannedACL.PublicRead
                         };
+
                     foreach (var metadataKey in getResponse.Metadata.Keys)
                     {
                         copyRequest.Metadata.Add(metadataKey, getResponse.Metadata[metadataKey]);
@@ -276,6 +294,52 @@ namespace NuClear.VStore.Sessions
             finally
             {
                 await _cephS3Client.DeleteObjectAsync(_filesBucketName, uploadKey);
+            }
+        }
+
+        /// <summary>
+        /// Fetch file for created session
+        /// </summary>
+        /// <param name="sessionId">Session identifier</param>
+        /// <param name="templateCode">Element's template code</param>
+        /// <param name="fetchParameters">Fetch parameters</param>
+        /// <exception cref="InvalidTemplateException">Specified template code does not refer to binary element</exception>
+        /// <exception cref="InvalidFetchUrlException">Fetch URL is invalid</exception>
+        /// <exception cref="MissingFilenameException">Filename is not specified</exception>
+        /// <exception cref="ObjectNotFoundException">Session or template has not been found</exception>
+        /// <exception cref="SessionExpiredException">Specified session is expired</exception>
+        /// <exception cref="S3Exception">Error making request to S3</exception>
+        /// <exception cref="InvalidBinaryException">Binary does not meet template's constraints</exception>
+        /// <returns>Fetched file key</returns>
+        public async Task<string> FetchFile(Guid sessionId, int templateCode, FetchParameters fetchParameters)
+        {
+            if (!Uri.TryCreate(fetchParameters.Url, UriKind.Absolute, out var fetchUri) ||
+                !fetchUri.IsWellFormedOriginalString() ||
+                fetchUri.Scheme != Uri.UriSchemeHttp && fetchUri.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new InvalidFetchUrlException(
+                    $"Fetch URI must be a valid absolute URI with '{Uri.UriSchemeHttp}' or '{Uri.UriSchemeHttps}' scheme");
+            }
+
+            MultipartUploadSession uploadSession = null;
+            try
+            {
+                var (stream, mediaType) = await _fetchClient.FetchAsync(fetchUri);
+                uploadSession = await InitiateMultipartUpload(sessionId, templateCode, new GenericUploadedFileMetadata(FileType.NotSet, fetchParameters.FileName, mediaType, stream.Length));
+                await UploadFilePart(uploadSession, stream, templateCode);
+                var uploadedFileKey = await CompleteMultipartUpload(uploadSession);
+                return uploadedFileKey;
+            }
+            catch (FetchResponseTooLargeException ex)
+            {
+                throw new InvalidBinaryException(templateCode, new BinaryTooLargeError(ex.ContentLength));
+            }
+            finally
+            {
+                if (uploadSession != null)
+                {
+                    await AbortMultipartUpload(uploadSession);
+                }
             }
         }
 
