@@ -53,9 +53,9 @@ namespace NuClear.VStore.Host.Controllers
         /// <returns>Session descriptor</returns>
         [Obsolete, MapToApiVersion("1.0")]
         [HttpGet("{sessionId:guid}")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(string), 404)]
-        [ProducesResponseType(410)]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status410Gone)]
         public async Task<IActionResult> GetV10(Guid sessionId)
         {
             try
@@ -110,9 +110,9 @@ namespace NuClear.VStore.Host.Controllers
         /// <returns>Session descriptor</returns>
         [MapToApiVersion("1.1")]
         [HttpGet("{sessionId:guid}")]
-        [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(string), 404)]
-        [ProducesResponseType(410)]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status410Gone)]
         public async Task<IActionResult> Get(Guid sessionId)
         {
             try
@@ -364,12 +364,12 @@ namespace NuClear.VStore.Host.Controllers
         [AllowAnonymous]
         [HttpPost("{sessionId:guid}/fetch/{templateCode:int}")]
         [Consumes(Http.ContentType.Json)]
-        [ProducesResponseType(typeof(UploadedFileValue), 201)]
-        [ProducesResponseType(typeof(string), 400)]
-        [ProducesResponseType(typeof(string), 404)]
-        [ProducesResponseType(typeof(string), 410)]
-        [ProducesResponseType(typeof(object), 422)]
-        [ProducesResponseType(typeof(string), 452)]
+        [ProducesResponseType(typeof(FetchedFileValue), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status410Gone)]
+        [ProducesResponseType(typeof(object), StatusCodes.Status422UnprocessableEntity)]
+        [ProducesResponseType(typeof(string), StatusCodes.Status424FailedDependency)]
         public async Task<ActionResult> FetchFile(
             Guid sessionId,
             int templateCode,
