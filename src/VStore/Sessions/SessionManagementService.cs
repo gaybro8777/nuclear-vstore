@@ -95,20 +95,20 @@ namespace NuClear.VStore.Sessions
 
             var templateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(templateId, templateVersionId);
             var sessionDescriptor = new SessionDescriptor
-                                        {
-                                            TemplateId = templateDescriptor.Id,
-                                            TemplateVersionId = templateDescriptor.VersionId,
-                                            Language = language,
-                                            BinaryElementTemplateCodes = templateDescriptor.GetBinaryElementTemplateCodes()
-                                        };
+                {
+                    TemplateId = templateDescriptor.Id,
+                    TemplateVersionId = templateDescriptor.VersionId,
+                    Language = language,
+                    BinaryElementTemplateCodes = templateDescriptor.GetBinaryElementTemplateCodes()
+                };
             var request = new PutObjectRequest
-                              {
-                                  BucketName = _filesBucketName,
-                                  Key = sessionId.AsS3ObjectKey(Tokens.SessionPostfix),
-                                  CannedACL = S3CannedACL.PublicRead,
-                                  ContentType = ContentType.Json,
-                                  ContentBody = JsonConvert.SerializeObject(sessionDescriptor, SerializerSettings.Default)
-                              };
+                {
+                    BucketName = _filesBucketName,
+                    Key = sessionId.AsS3ObjectKey(Tokens.SessionPostfix),
+                    CannedACL = S3CannedACL.PublicRead,
+                    ContentType = ContentType.Json,
+                    ContentBody = JsonConvert.SerializeObject(sessionDescriptor, SerializerSettings.Default)
+                };
 
             var expiresAt = SessionDescriptor.CurrentTime().Add(_sessionExpiration);
             var metadataWrapper = MetadataCollectionWrapper.For(request.Metadata);
@@ -141,43 +141,8 @@ namespace NuClear.VStore.Sessions
             int templateCode,
             IUploadedFileMetadata uploadedFileMetadata)
         {
-            if (string.IsNullOrEmpty(uploadedFileMetadata.FileName))
-            {
-                throw new MissingFilenameException($"Filename has not been provided for the item '{templateCode}'");
-            }
-
             var (sessionDescriptor, _, expiresAt) = await _sessionStorageReader.GetSessionDescriptor(sessionId);
-            if (sessionDescriptor.BinaryElementTemplateCodes.All(x => x != templateCode))
-            {
-                throw new InvalidTemplateException(
-                    $"Binary content is not expected for the item '{templateCode}' within template '{sessionDescriptor.TemplateId}' " +
-                    $"with version Id '{sessionDescriptor.TemplateVersionId}'.");
-            }
-
-            var elementDescriptor = await GetElementDescriptor(sessionDescriptor.TemplateId, sessionDescriptor.TemplateVersionId, templateCode);
-            EnsureFileMetadataIsValid(elementDescriptor, sessionDescriptor.Language, uploadedFileMetadata);
-
-            var fileKey = Guid.NewGuid().ToString();
-            var key = sessionId.AsS3ObjectKey(fileKey);
-            var request = new InitiateMultipartUploadRequest
-                {
-                    BucketName = _filesBucketName,
-                    Key = key,
-                    ContentType = uploadedFileMetadata.ContentType
-                };
-            var metadataWrapper = MetadataCollectionWrapper.For(request.Metadata);
-            metadataWrapper.Write(MetadataElement.Filename, uploadedFileMetadata.FileName);
-
-            var uploadResponse = await _cephS3Client.InitiateMultipartUploadAsync(request);
-
-            return new MultipartUploadSession(
-                sessionId,
-                sessionDescriptor,
-                expiresAt,
-                elementDescriptor,
-                uploadedFileMetadata,
-                fileKey,
-                uploadResponse.UploadId);
+            return await InitiateMultipartUploadInternal(sessionId, templateCode, uploadedFileMetadata, sessionDescriptor, expiresAt);
         }
 
         public async Task UploadFilePart(MultipartUploadSession uploadSession, Stream inputStream, int templateCode)
@@ -203,14 +168,14 @@ namespace NuClear.VStore.Sessions
             inputStream.Position = 0;
 
             var response = await _cephS3Client.UploadPartAsync(
-                                new UploadPartRequest
-                                    {
-                                        BucketName = _filesBucketName,
-                                        Key = key,
-                                        UploadId = uploadSession.UploadId,
-                                        InputStream = inputStream,
-                                        PartNumber = uploadSession.NextPartNumber
-                                    });
+                               new UploadPartRequest
+                                   {
+                                       BucketName = _filesBucketName,
+                                       Key = key,
+                                       UploadId = uploadSession.UploadId,
+                                       InputStream = inputStream,
+                                       PartNumber = uploadSession.NextPartNumber
+                                   });
             uploadSession.AddPart(response.ETag);
         }
 
@@ -323,16 +288,16 @@ namespace NuClear.VStore.Sessions
                     $"Fetch URI must be a valid absolute URI with '{Uri.UriSchemeHttp}' or '{Uri.UriSchemeHttps}' scheme");
             }
 
-            await _sessionStorageReader.GetSessionDescriptor(sessionId);    // Firstly ensure that specified session exists
             MultipartUploadSession uploadSession = null;
+            var (sessionDescriptor, _, expiresAt) = await _sessionStorageReader.GetSessionDescriptor(sessionId); // Firstly ensure that specified session exists
             try
             {
                 var (stream, mediaType) = await _fetchClient.FetchAsync(fetchUri);
                 var fileMetadata = new GenericUploadedFileMetadata(FileType.NotSet, fetchParameters.FileName, mediaType, stream.Length);
-                uploadSession = await InitiateMultipartUpload(sessionId, templateCode, fileMetadata);
+                uploadSession = await InitiateMultipartUploadInternal(sessionId, templateCode, fileMetadata, sessionDescriptor, expiresAt);
                 await UploadFilePart(uploadSession, stream, templateCode);
-                var uploadedFileKey = await CompleteMultipartUpload(uploadSession);
-                return uploadedFileKey;
+                var fetchedFileKey = await CompleteMultipartUpload(uploadSession);
+                return fetchedFileKey;
             }
             catch (FetchResponseTooLargeException ex)
             {
@@ -367,6 +332,51 @@ namespace NuClear.VStore.Sessions
             => Uri.TryCreate(fetchParameters.Url, UriKind.Absolute, out fetchUri) &&
                fetchUri.IsWellFormedOriginalString() &&
                (fetchUri.Scheme == Uri.UriSchemeHttp || fetchUri.Scheme == Uri.UriSchemeHttps);
+
+        private async Task<MultipartUploadSession> InitiateMultipartUploadInternal(
+            Guid sessionId,
+            int templateCode,
+            IUploadedFileMetadata uploadedFileMetadata,
+            SessionDescriptor sessionDescriptor,
+            DateTime expiresAt)
+        {
+            if (string.IsNullOrEmpty(uploadedFileMetadata.FileName))
+            {
+                throw new MissingFilenameException($"Filename has not been provided for the item '{templateCode}'");
+            }
+
+            if (sessionDescriptor.BinaryElementTemplateCodes.All(x => x != templateCode))
+            {
+                throw new InvalidTemplateException(
+                    $"Binary content is not expected for the item '{templateCode}' within template '{sessionDescriptor.TemplateId}' " +
+                    $"with version Id '{sessionDescriptor.TemplateVersionId}'.");
+            }
+
+            var elementDescriptor = await GetElementDescriptor(sessionDescriptor.TemplateId, sessionDescriptor.TemplateVersionId, templateCode);
+            EnsureFileMetadataIsValid(elementDescriptor, sessionDescriptor.Language, uploadedFileMetadata);
+
+            var fileKey = Guid.NewGuid().ToString();
+            var key = sessionId.AsS3ObjectKey(fileKey);
+            var request = new InitiateMultipartUploadRequest
+                {
+                    BucketName = _filesBucketName,
+                    Key = key,
+                    ContentType = uploadedFileMetadata.ContentType
+                };
+            var metadataWrapper = MetadataCollectionWrapper.For(request.Metadata);
+            metadataWrapper.Write(MetadataElement.Filename, uploadedFileMetadata.FileName);
+
+            var uploadResponse = await _cephS3Client.InitiateMultipartUploadAsync(request);
+
+            return new MultipartUploadSession(
+                sessionId,
+                sessionDescriptor,
+                expiresAt,
+                elementDescriptor,
+                uploadedFileMetadata,
+                fileKey,
+                uploadResponse.UploadId);
+        }
 
         private static void EnsureFileMetadataIsValid(IElementDescriptor elementDescriptor, Language language, IUploadedFileMetadata uploadedFileMetadata)
         {

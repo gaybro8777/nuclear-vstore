@@ -20,6 +20,8 @@ namespace NuClear.VStore.Sessions.Fetch
 {
     public class FetchClient : IFetchClient
     {
+        private const int StreamCopyBufferSize = 81920;
+
         private readonly int _maxRetryCount;
         private readonly long _maxBinarySize;
         private readonly ILogger<FetchClient> _logger;
@@ -80,7 +82,18 @@ namespace NuClear.VStore.Sessions.Fetch
                 var memoryStream = new MemoryStream();
                 using (var responseStream = await response.Content.ReadAsStreamAsync())
                 {
-                    await responseStream.CopyToAsync(memoryStream);
+                    int readBytes;
+                    var buffer = new byte[StreamCopyBufferSize];
+                    do
+                    {
+                        readBytes = await responseStream.ReadAsync(buffer, 0, buffer.Length);
+                        await memoryStream.WriteAsync(buffer, 0, readBytes);
+                        if (memoryStream.Length > _maxBinarySize)
+                        {
+                            throw new FetchResponseTooLargeException(memoryStream.Length);
+                        }
+                    }
+                    while (readBytes > 0);
                 }
 
                 return (memoryStream, response.Content.Headers.ContentType.MediaType);
