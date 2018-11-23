@@ -1,4 +1,4 @@
-FROM docker-hub.2gis.ru/microsoft/dotnet:2.1.0-runtime-deps-alpine3.7
+FROM docker-hub.2gis.ru/microsoft/dotnet:2.1.6-runtime-deps-alpine3.7
 WORKDIR /app
 EXPOSE 5000
 ENV ASPNETCORE_URLS http://*:5000
