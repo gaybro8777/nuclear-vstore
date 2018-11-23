@@ -153,7 +153,7 @@ deploy:relizard:review:
     - 'curl -s -X POST http://relizard-gecko.web-staging.2gis.ru/envs -H "content-type: application/json" -d $GECKO_PAYLOAD --trace-ascii ${CI_PROJECT_DIR}/gecko_trace'
     - '_poll="curl -s -X GET http://relizard-gecko.web-staging.2gis.ru/envs/env/${CI_COMMIT_REF_SLUG}"'
     - 'export _elapsed=0'
-    - 'echo ${CI_COMMIT_REF_SLUG:0:20} | sed -r "s/^(ams-[0-9]*)(.*)/\1/" | xargs -i printf "Environment will be ready on address:\n\033[0;32mhttp://vstore-{}.web-staging.2gis.ru/swagger\033[0m\n"'
+    - 'echo ${CI_COMMIT_REF_SLUG:0:20} | sed -r "s/^(ams-[0-9]*)(.*)/\1/" | xargs -i printf "Environment will be ready on address:\n\033[0;32mhttp://vstore-env-{}.web-staging.2gis.ru/swagger\033[0m\n"'
     - 'while true; do sleep 5; let _elapsed=_elapsed+5; _status=$(${_poll} | python -c "import sys, json; print json.load(sys.stdin)[\"status\"]"); echo "Elapsed ${_elapsed}s, status: ${_status}"; case $_status in running) continue;; pending) continue;; success) exit 0;; *) exit 99;; esac; done'
   artifacts:
     name: "${CI_PROJECT_NAME}_${CI_COMMIT_SHA}"

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 
 using Amazon.Runtime;
@@ -30,8 +29,7 @@ using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
 using NuClear.VStore.Templates;
 
-using Prometheus.Client.Collectors;
-using Prometheus.Client.Owin;
+using Prometheus.Client.AspNetCore;
 
 using RedLockNet;
 
@@ -189,16 +187,7 @@ namespace NuClear.VStore.Renderer
         public void Configure(IApplicationBuilder app)
         {
             app.UseMiddleware<HealthCheckMiddleware>();
-            app.UsePrometheusServer(
-                new PrometheusOptions
-                    {
-                        Collectors = new List<IOnDemandCollector>
-                            {
-                                new DotNetStatsCollector(),
-                                new DotNetMemoryStatsCollector(),
-                                new WindowsDotNetStatsCollector()
-                            }
-                    });
+            app.UsePrometheusServer(options => options.UseDefaultCollectors = true);
             app.UseMiddleware<CrosscuttingTraceIdentifierMiddleware>();
             if (!_environment.IsProduction())
             {
