@@ -31,6 +31,8 @@ using NuClear.VStore.Templates;
 using NuClear.VStore.Kafka;
 using NuClear.VStore.Prometheus;
 
+using Prometheus.Client.MetricServer;
+
 using RedLockNet;
 
 using Serilog;
@@ -42,7 +44,7 @@ namespace NuClear.VStore.Worker
         private const string Aws = "AWS";
         private const string Ceph = "Ceph";
 
-        private static readonly IMetricServer MetricServer = new MetricServer(5000);
+        private static readonly IMetricServer MetricServer = new MetricServer(useDefaultCollectors: true, port: 5000);
 
         public static void Main(string[] args)
         {
@@ -87,9 +89,9 @@ namespace NuClear.VStore.Worker
                             CommandLine.Commands.Binaries,
                             commandConfig =>
                                 {
-                                    commandConfig.Description = "Collect unrefenced and expired binary files.";
+                                    commandConfig.Description = "Collect unreferenced and expired binary files.";
                                     commandConfig.HelpOption(CommandLine.HelpOptionTemplate);
-                                    commandConfig.Argument(CommandLine.Arguments.BatchSize, "Maximun amount of events to process for one iteration.");
+                                    commandConfig.Argument(CommandLine.Arguments.BatchSize, "Maximum amount of events to process for one iteration.");
                                     commandConfig.Argument(CommandLine.Arguments.Delay, "Delay between collections.");
                                     commandConfig.OnExecute(() => Run(commandConfig, jobRunner, cts));
                                 });

@@ -20,7 +20,6 @@ using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -45,8 +44,7 @@ using NuClear.VStore.S3;
 using NuClear.VStore.Sessions;
 using NuClear.VStore.Templates;
 
-using Prometheus.Client.Collectors;
-using Prometheus.Client.Owin;
+using Prometheus.Client.AspNetCore;
 
 using RedLockNet;
 
@@ -294,11 +292,7 @@ namespace NuClear.VStore.Host
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
             app.UseMiddleware<HealthCheckMiddleware>();
-            app.UsePrometheusServer(
-                new PrometheusOptions
-                    {
-                        Collectors = new List<IOnDemandCollector> { new DotNetStatsCollector(), new WindowsDotNetStatsCollector() }
-                    });
+            app.UsePrometheusServer(options => options.UseDefaultCollectors = true);
             app.UseMiddleware<CrosscuttingTraceIdentifierMiddleware>();
 
             if (!env.IsProduction())
