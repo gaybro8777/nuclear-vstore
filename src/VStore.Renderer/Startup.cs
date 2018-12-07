@@ -33,6 +33,7 @@ using Prometheus;
 using RedLockNet;
 
 using Swashbuckle.AspNetCore.Swagger;
+using Swashbuckle.AspNetCore.SwaggerUI;
 
 namespace NuClear.VStore.Renderer
 {
@@ -58,7 +59,7 @@ namespace NuClear.VStore.Renderer
                 .Configure<ThrottlingOptions>(_configuration.GetSection("Throttling"));
 
             services.AddMvcCore()
-                    .SetCompatibilityVersion(CompatibilityVersion.Version_2_1)
+                    .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
                     .AddVersionedApiExplorer()
                     .AddApiExplorer()
                     .AddCors()

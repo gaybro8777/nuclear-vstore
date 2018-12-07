@@ -31,8 +31,6 @@ using NuClear.VStore.Templates;
 using NuClear.VStore.Kafka;
 using NuClear.VStore.Prometheus;
 
-using Prometheus.Client.MetricServer;
-
 using RedLockNet;
 
 using Serilog;
@@ -45,7 +43,7 @@ namespace NuClear.VStore.Worker
         private const string Aws = "AWS";
         private const string Ceph = "Ceph";
 
-        private static readonly IMetricServer MetricServer = new MetricServer(useDefaultCollectors: true, port: 5000);
+        private static readonly IMetricServer MetricServer = new MetricServer(5000);
 
         public static void Main(string[] args)
         {

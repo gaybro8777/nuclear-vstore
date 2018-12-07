@@ -14,17 +14,17 @@ before_script:
 # ================= Test & Build =================
 
 build:app:
-  image: $REGISTRY/microsoft/dotnet:2.1.400-sdk-alpine3.7
+  image: $REGISTRY/microsoft/dotnet:2.2.100-sdk-alpine3.8
   stage: build
   when: always
   script:
-    - dotnet restore --runtime alpine.3.7-x64
+    - dotnet restore --runtime alpine.3.8-x64
     - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=lcov /p:CoverletOutput="`pwd`/coverage/"
-    - dotnet publish src/VStore.Host --configuration Release --runtime alpine.3.7-x64 --output ../../publish/vstore
-    - dotnet publish src/VStore.Worker --configuration Release --runtime alpine.3.7-x64 --output ../../publish/vstore-worker
-    - dotnet publish src/VStore.Renderer --configuration Release --runtime alpine.3.7-x64 --output ../../publish/vstore-renderer
-    - cp lib/librdkafka-0.11.5-alpine.3.7.so publish/vstore/librdkafka.so
-    - cp lib/librdkafka-0.11.5-alpine.3.7.so publish/vstore-worker/librdkafka.so
+    - dotnet publish src/VStore.Host --configuration Release --runtime alpine.3.8-x64 --output ../../publish/vstore
+    - dotnet publish src/VStore.Worker --configuration Release --runtime alpine.3.8-x64 --output ../../publish/vstore-worker
+    - dotnet publish src/VStore.Renderer --configuration Release --runtime alpine.3.8-x64 --output ../../publish/vstore-renderer
+    - cp lib/librdkafka-0.11.6-alpine.3.8-ssl-lz4.so publish/vstore/librdkafka.so
+    - cp lib/librdkafka-0.11.6-alpine.3.8-ssl-lz4.so publish/vstore-worker/librdkafka.so
   tags: [ 2gis, docker ]
   artifacts:
     name: "${CI_COMMIT_REF_NAME}_app"
@@ -36,11 +36,11 @@ build:app:
       - publish/vstore-renderer/
 
 build:cloning-tool:
-  image: $REGISTRY/microsoft/dotnet:2.1.400-sdk-alpine3.7
+  image: $REGISTRY/microsoft/dotnet:2.2.100-sdk-alpine3.8
   stage: build
   when: manual
   script:
-    - dotnet publish src/CloningTool --configuration Release --runtime alpine.3.7-x64 --output ../../publish/cloning-tool
+    - dotnet publish src/CloningTool --configuration Release --runtime alpine.3.8-x64 --output ../../publish/cloning-tool
   tags: [ 2gis, docker ]
   artifacts:
     name: "${CI_COMMIT_REF_NAME}_cloning_tool"

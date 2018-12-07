@@ -49,6 +49,7 @@ using Prometheus;
 using RedLockNet;
 
 using Swashbuckle.AspNetCore.Swagger;
+using Swashbuckle.AspNetCore.SwaggerUI;
 
 namespace NuClear.VStore.Host
 {
@@ -99,7 +100,7 @@ namespace NuClear.VStore.Host
                                     .Build();
                                 options.Filters.Add(new AuthorizeFilter(policy));
                             })
-                    .SetCompatibilityVersion(CompatibilityVersion.Version_2_1)
+                    .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
                     .AddVersionedApiExplorer()
                     .AddApiExplorer()
                     .AddAuthorization()

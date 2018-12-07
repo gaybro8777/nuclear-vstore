@@ -20,6 +20,10 @@ namespace NuClear.VStore.Locks
         public bool IsAcquired => _innerRedLock.IsAcquired;
         public int ExtendCount => _innerRedLock.ExtendCount;
 
+        public RedLockStatus Status => _innerRedLock.Status;
+
+        public RedLockInstanceSummary InstanceSummary => _innerRedLock.InstanceSummary;
+
         public void Dispose()
         {
             try

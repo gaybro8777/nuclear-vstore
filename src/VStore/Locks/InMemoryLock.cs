@@ -18,6 +18,10 @@ namespace NuClear.VStore.Locks
         public bool IsAcquired { get; private set; }
         public int ExtendCount { get; } = 0;
 
+        public RedLockStatus Status => IsAcquired ? RedLockStatus.Acquired : RedLockStatus.Conflicted;
+
+        public RedLockInstanceSummary InstanceSummary => new RedLockInstanceSummary();
+
         public InMemoryLock(IMemoryCache memoryCache, string resource, TimeSpan expiryTime)
         {
             _memoryCache = memoryCache;

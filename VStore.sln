@@ -7,6 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "build", "build", "{C8C4BA38
 	ProjectSection(SolutionItems) = preProject
 		.gitlab-ci.yml = .gitlab-ci.yml
 		.travis.yml = .travis.yml
+		build\build-librdkafka-alpine.ps1 = build\build-librdkafka-alpine.ps1
 		build\build.sh = build\build.sh
 		config-standalone.yaml = config-standalone.yaml
 		build\docker-compose-build.yml = build\docker-compose-build.yml
