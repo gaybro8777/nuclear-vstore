@@ -81,15 +81,6 @@ namespace NuClear.VStore.Objects
                 }
 
                 var templateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(objectDescriptor.TemplateId, objectDescriptor.TemplateVersionId);
-
-                var latestTemplateVersionId = await _templatesStorageReader.GetTemplateLatestVersion(objectDescriptor.TemplateId);
-                if (!templateDescriptor.VersionId.Equals(latestTemplateVersionId, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException(
-                        $"Template '{objectDescriptor.TemplateId}' has an outdated version. " +
-                        $"Latest versionId for template '{objectDescriptor.TemplateId}' is '{latestTemplateVersionId}'.");
-                }
-
                 if (templateDescriptor.Elements.Count != objectDescriptor.Elements.Count)
                 {
                     throw new ObjectInconsistentException(
@@ -330,8 +321,7 @@ namespace NuClear.VStore.Objects
             }
 
             var objectKey = id.AsS3ObjectKey(Tokens.ObjectPostfix);
-            var objectVersions = await _objectsStorageReader.GetObjectLatestVersions(id);
-            var elementVersions = objectVersions.Where(x => !x.Id.EndsWith(Tokens.ObjectPostfix)).ToList();
+            var elementVersions = await _objectsStorageReader.GetObjectElementsLatestVersions(id);
             var objectPersistenceDescriptor = new ObjectPersistenceDescriptor
                 {
                     TemplateId = objectDescriptor.TemplateId,
@@ -360,10 +350,8 @@ namespace NuClear.VStore.Objects
             await _s3Client.PutObjectAsync(putRequest);
             _referencedBinariesMetric.Inc(totalBinariesCount);
 
-            objectVersions = await _objectsStorageReader.GetObjectLatestVersions(id);
-            return objectVersions.Where(x => x.Id.EndsWith(Tokens.ObjectPostfix))
-                                 .Select(x => x.VersionId)
-                                 .Single();
+            var objectLatestVersion = await _objectsStorageReader.GetObjectLatestVersion(id);
+            return objectLatestVersion.VersionId;
         }
 
         private static (IObjectElementValue elementPersistenceValue, int binariesCount) ConvertToPersistenceValue(

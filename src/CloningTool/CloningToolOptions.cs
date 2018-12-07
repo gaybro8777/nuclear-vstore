@@ -6,8 +6,6 @@ namespace CloningTool
     {
         public CloneMode Mode { get; set; }
 
-        public bool FetchAdvertisementBeforeClone { get; set; }
-
         public bool OverwriteUnequalRemarks { get; set; } = false;
 
         public int MaxDegreeOfParallelism { get; set; }
@@ -19,6 +17,8 @@ namespace CloningTool
         public DateTime? AdvertisementsCreatedAtBeginDate { get; set; }
 
         public string AdvertisementIdsFilename { get; set; }
+
+        public long? AdvertisementsProjectId { get; set; }
 
         public long? AdvertisementsTemplateId { get; set; }
 

@@ -13,12 +13,14 @@ namespace NuClear.VStore.DataContract
             long id,
             string versionId,
             int versionIndex,
+            long templateId,
+            string templateVersionId,
             DateTime lastModified,
             AuthorInfo authorInfo,
             JObject properties,
             IReadOnlyCollection<ElementRecord> elements,
             IReadOnlyCollection<int> modifiedElements)
-            : base(id, versionId, versionIndex, lastModified, authorInfo, properties, modifiedElements)
+            : base(id, versionId, versionIndex, templateId, templateVersionId, lastModified, authorInfo, properties, modifiedElements)
         {
             Elements = elements;
         }

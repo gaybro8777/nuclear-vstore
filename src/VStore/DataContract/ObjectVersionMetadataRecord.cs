@@ -16,6 +16,8 @@ namespace NuClear.VStore.DataContract
             long id,
             string versionId,
             int versionIndex,
+            long templateId,
+            string templateVersionId,
             DateTime lastModified,
             AuthorInfo authorInfo,
             JObject properties,
@@ -24,12 +26,16 @@ namespace NuClear.VStore.DataContract
             _authorInfo = authorInfo;
             _versionedObjectDescriptor = new VersionedObjectDescriptor<long>(id, versionId, lastModified);
             VersionIndex = versionIndex;
+            TemplateId = templateId;
+            TemplateVersionId = templateVersionId;
             Properties = properties;
             ModifiedElements = modifiedElements;
         }
 
         public long Id => _versionedObjectDescriptor.Id;
         public string VersionId => _versionedObjectDescriptor.VersionId;
+        public long TemplateId { get; }
+        public string TemplateVersionId { get; }
         public int VersionIndex { get; }
         public string Author => _authorInfo.Author;
         public string AuthorLogin => _authorInfo.AuthorLogin;

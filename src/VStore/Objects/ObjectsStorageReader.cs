@@ -73,10 +73,8 @@ namespace NuClear.VStore.Objects
                                     ObjectMetadataRecord record;
                                     try
                                     {
-                                        var objectVersions = await GetObjectLatestVersions(id);
-                                        var versionId = objectVersions.Where(v => v.Id.EndsWith(Tokens.ObjectPostfix))
-                                                                      .Select(v => v.VersionId)
-                                                                      .SingleOrDefault();
+                                        var objectLatestVersion = await GetObjectLatestVersion(id);
+                                        var versionId = objectLatestVersion?.VersionId;
                                         if (versionId == null)
                                         {
                                             record = null;
@@ -121,11 +119,21 @@ namespace NuClear.VStore.Objects
         public async Task<IReadOnlyCollection<ObjectVersionMetadataRecord>> GetObjectVersionsMetadata(long id, string initialVersionId) =>
             await GetObjectVersions(id, initialVersionId, false);
 
-        public async Task<IReadOnlyCollection<VersionedObjectDescriptor<string>>> GetObjectLatestVersions(long id)
+        /// <inheritdoc />
+        public async Task<VersionedObjectDescriptor<string>> GetObjectLatestVersion(long id)
+        {
+            var versionsResponse = await _s3Client.ListVersionsAsync(_bucketName, id.AsS3ObjectKey(Tokens.ObjectPostfix));
+            return versionsResponse.Versions
+                                   .Where(x => !x.IsDeleteMarker && x.IsLatest)
+                                   .Select(x => new VersionedObjectDescriptor<string>(x.Key, x.VersionId, x.LastModified))
+                                   .SingleOrDefault();
+        }
+
+        public async Task<IReadOnlyCollection<VersionedObjectDescriptor<string>>> GetObjectElementsLatestVersions(long id)
         {
             var versionsResponse = await _s3Client.ListVersionsAsync(_bucketName, id.ToString() + "/");
             return versionsResponse.Versions
-                                   .Where(x => !x.IsDeleteMarker && x.IsLatest && !x.Key.EndsWith("/"))
+                                   .Where(x => !x.IsDeleteMarker && x.IsLatest && !x.Key.EndsWith("/") && !x.Key.EndsWith(Tokens.ObjectPostfix))
                                    .Select(x => new VersionedObjectDescriptor<string>(x.Key, x.VersionId, x.LastModified))
                                    .ToList();
         }
@@ -143,6 +151,20 @@ namespace NuClear.VStore.Objects
                                        Prefix = $"{id}/{Tokens.ObjectPostfix}"
                                    });
             return listResponse.S3Objects.Count != 0;
+        }
+
+        /// <inheritdoc />
+        public async Task<DateTime> GetObjectVersionLastModified(long id, string versionId)
+        {
+            try
+            {
+                var response = await _s3Client.GetObjectMetadataAsync(_bucketName, id.AsS3ObjectKey(Tokens.ObjectPostfix), versionId);
+                return response.LastModified;
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                throw new ObjectNotFoundException($"Object '{id}' with versionId '{versionId}' not found.");
+            }
         }
 
         /// <inheritdoc/>
@@ -246,6 +268,8 @@ namespace NuClear.VStore.Objects
                     descriptor.Id,
                     descriptor.VersionId,
                     --maxVersionIndex,
+                    descriptor.TemplateId,
+                    descriptor.TemplateVersionId,
                     descriptor.LastModified,
                     new AuthorInfo(descriptor.Metadata.Author, descriptor.Metadata.AuthorLogin, descriptor.Metadata.AuthorName),
                     descriptor.Properties,
@@ -261,10 +285,8 @@ namespace NuClear.VStore.Objects
             string objectVersionId;
             if (string.IsNullOrEmpty(versionId))
             {
-                var objectVersions = await GetObjectLatestVersions(id);
-                objectVersionId = objectVersions.Where(x => x.Id.EndsWith(Tokens.ObjectPostfix))
-                                                .Select(x => x.VersionId)
-                                                .SingleOrDefault();
+                var objectLatestVersion = await GetObjectLatestVersion(id);
+                objectVersionId = objectLatestVersion?.VersionId;
 
                 if (objectVersionId == null)
                 {

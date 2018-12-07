@@ -122,13 +122,41 @@ namespace NuClear.VStore.Host.Controllers
         }
 
         /// <summary>
+        /// Get object's latest version metadata
+        /// </summary>
+        /// <param name="id">Object identifier</param>
+        /// <param name="ifNoneMatch">Object version to check if it has been modified (optional)</param>
+        /// <returns>No body with status 200 Ok or 404 Not Found or 304 Not Modified</returns>
+        [HttpHead("{id:long}")]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(304)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetMetadata(long id, [FromHeader(Name = HeaderNames.IfNoneMatch)] string ifNoneMatch)
+        {
+            var latestVersion = await _objectsStorageReader.GetObjectLatestVersion(id);
+            if (latestVersion == null)
+            {
+                return NotFound();
+            }
+
+            Response.Headers[HeaderNames.ETag] = $"\"{latestVersion.VersionId}\"";
+            Response.Headers[HeaderNames.LastModified] = latestVersion.LastModified.ToString("R");
+
+            if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch.Trim('"') == latestVersion.VersionId)
+            {
+                return NotModified();
+            }
+
+            return Ok();
+        }
+
+        /// <summary>
         /// Get object's latest version
         /// </summary>
         /// <param name="id">Object identifier</param>
         /// <param name="ifNoneMatch">Object version to check if it has been modified (optional)</param>
         /// <returns>Object descriptor or 304 Not Modified</returns>
         [HttpGet("{id:long}")]
-        [ResponseCache(Duration = 120)]
         [ProducesResponseType(typeof(object), 200)]
         [ProducesResponseType(304)]
         [ProducesResponseType(404)]
@@ -169,7 +197,32 @@ namespace NuClear.VStore.Host.Controllers
         }
 
         /// <summary>
-        /// Get object specific version
+        /// Get object's specific version metadata
+        /// </summary>
+        /// <param name="id">Object identifier</param>
+        /// <param name="versionId">Object version</param>
+        /// <returns>No body with status 200 Ok or 404 Not Found</returns>
+        [HttpHead("{id:long}/{versionId}")]
+        [ResponseCache(Duration = 120)]
+        [ProducesResponseType(200)]
+        [ProducesResponseType(404)]
+        public async Task<IActionResult> GetVersionMetadata(long id, string versionId)
+        {
+            try
+            {
+                var lastModified = await _objectsStorageReader.GetObjectVersionLastModified(id, versionId);
+                Response.Headers[HeaderNames.ETag] = $"\"{versionId}\"";
+                Response.Headers[HeaderNames.LastModified] = lastModified.ToString("R");
+                return Ok();
+            }
+            catch (ObjectNotFoundException)
+            {
+                return NotFound();
+            }
+        }
+
+        /// <summary>
+        /// Get object's specific version
         /// </summary>
         /// <param name="id">Object identifier</param>
         /// <param name="versionId">Object version</param>
@@ -177,7 +230,6 @@ namespace NuClear.VStore.Host.Controllers
         [HttpGet("{id:long}/{versionId}")]
         [ResponseCache(Duration = 120)]
         [ProducesResponseType(typeof(object), 200)]
-        [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(404)]
         public async Task<IActionResult> GetVersion(long id, string versionId)
         {
@@ -206,10 +258,6 @@ namespace NuClear.VStore.Host.Controllers
             catch (ObjectNotFoundException)
             {
                 return NotFound();
-            }
-            catch (ObjectInconsistentException ex)
-            {
-                return BadRequest(ex.Message);
             }
         }
 
@@ -272,11 +320,6 @@ namespace NuClear.VStore.Host.Controllers
             catch (LockAlreadyExistsException)
             {
                 return Locked("Simultaneous creation of object with the same id");
-            }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogError(default, ex, "Error occured while creating object");
-                return BadRequest(ex.Message);
             }
             catch (ArgumentException ex)
             {
@@ -357,11 +400,6 @@ namespace NuClear.VStore.Host.Controllers
             catch (ConcurrencyException)
             {
                 return PreconditionFailed();
-            }
-            catch (InvalidOperationException ex)
-            {
-                _logger.LogError(default, ex, "Error occured while modifying object");
-                return BadRequest(ex.Message);
             }
             catch (ArgumentException ex)
             {

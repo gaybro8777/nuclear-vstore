@@ -108,56 +108,20 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task<ApiObjectDescriptor> GetAdvertisementAsync(long advertisementId)
+        public async Task<ApiObjectDescriptor> GetAdvertisementAsync(long id, string versionId = null)
         {
-            var amId = advertisementId.ToString();
-            var methodUri = new Uri(_amUri, amId);
-            var server = string.Empty;
-            var requestId = string.Empty;
-            var stringResponse = string.Empty;
-            try
+            var methodUri = new Uri(_amUri, id.ToString() + (string.IsNullOrEmpty(versionId) ? string.Empty : $"/version/{versionId}"));
+            var res = await GetEntityAsync<IReadOnlyCollection<ApiObjectDescriptor>>("advertisement", methodUri, id, versionId);
+            if (res.Count != 1)
             {
-                using (var response = await _authorizedHttpClient.GetAsync(methodUri))
-                {
-                    (stringResponse, server, requestId) = await HandleResponse(response);
-                    if (response.StatusCode == HttpStatusCode.NotFound && server == DefaultServer)
-                    {
-                        _logger.LogDebug("Advertisement {id} not found", amId);
-                        return null;
-                    }
-
-                    response.EnsureSuccessStatusCode();
-                    var res = JsonConvert.DeserializeObject<IReadOnlyCollection<ApiObjectDescriptor>>(stringResponse, ApiSerializerSettings.Default);
-                    if (res == null)
-                    {
-                        throw new SerializationException("Cannot deserialize response for advertisement " + amId + ": " + stringResponse);
-                    }
-
-                    if (res.Count != 1)
-                    {
-                        throw new NotSupportedException("Unsupported count of advertisements in response for object " + amId + ": " + res.Count.ToString());
-                    }
-
-                    return res.First();
-                }
+                throw new NotSupportedException("Unsupported elements count in response for advertisement " + id + ": " + res.Count.ToString());
             }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Request {requestId} to server {server} error while getting advertisement {id} with response: {response}",
-                    requestId,
-                    server,
-                    amId,
-                    stringResponse);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Getting advertisement {id} error", amId);
-                throw;
-            }
+
+            return res.First();
         }
+
+        public async Task<IReadOnlyCollection<ApiObjectVersion>> GetAdvertisementVersionsAsync(long id)
+            => await GetEntityVersionsAsync<ApiObjectVersion>(id, _amUri, "advertisement");
 
         public async Task<ApiObjectDescriptor> UpdateAdvertisementAsync(ApiObjectDescriptor advertisement)
         {
@@ -188,6 +152,7 @@ namespace CloningTool.RestClient
                                 advertisementId,
                                 descriptor.VersionId,
                                 advertisement.VersionId);
+
                             return descriptor;
                         }
                     }
@@ -212,57 +177,20 @@ namespace CloningTool.RestClient
         }
 
         public async Task CreateRemarkCategoryAsync(string remarkCategoryId, RemarkCategory remarkCategory) =>
-            await CreateOrUpdateEntityAsync(new Uri(_remarkCategoryUri, remarkCategoryId), remarkCategoryId, remarkCategory);
+            await ModifyEntityStateAsync(HttpMethod.Post, new Uri(_remarkCategoryUri, remarkCategoryId), remarkCategoryId, remarkCategory);
 
         public async Task UpdateRemarkCategoryAsync(string remarkCategoryId, RemarkCategory remarkCategory) =>
-            await CreateOrUpdateEntityAsync(new Uri(_remarkCategoryUri, remarkCategoryId), remarkCategoryId, remarkCategory, true);
+            await ModifyEntityStateAsync(HttpMethod.Put, new Uri(_remarkCategoryUri, remarkCategoryId), remarkCategoryId, remarkCategory);
 
         public async Task CreateRemarkAsync(string remarkId, Remark remark) =>
-            await CreateOrUpdateEntityAsync(new Uri(_remarkUri, remarkId), remarkId, remark);
+            await ModifyEntityStateAsync(HttpMethod.Post, new Uri(_remarkUri, remarkId), remarkId, remark);
 
         public async Task UpdateRemarkAsync(string remarkId, Remark remark) =>
-            await CreateOrUpdateEntityAsync(new Uri(_remarkUri, remarkId), remarkId, remark, true);
+            await ModifyEntityStateAsync(HttpMethod.Put, new Uri(_remarkUri, remarkId), remarkId, remark);
 
-        private async Task CreateOrUpdateEntityAsync<T>(Uri methodUri, string entityId, T entity, bool updateEntity = false)
+        public async Task<ApiObjectDescriptor> CreateAdvertisementPrototypeAsync(long templateId, string templateVersion, string langCode, long firmId)
         {
-            var server = string.Empty;
-            var requestId = string.Empty;
-            var stringResponse = string.Empty;
-            try
-            {
-                using (var content = new StringContent(JsonConvert.SerializeObject(entity, ApiSerializerSettings.Default), Encoding.UTF8, ContentType.Json))
-                {
-                    var method = updateEntity ? HttpMethod.Put : HttpMethod.Post;
-                    var request = new HttpRequestMessage(method, methodUri) { Content = content };
-                    using (var response = await _authorizedHttpClient.SendAsync(request))
-                    {
-                        (stringResponse, server, requestId) = await HandleResponse(response);
-                        response.EnsureSuccessStatusCode();
-                    }
-                }
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Request {requestId} to server {server} error while creating {entityType} {id} with response: {response}",
-                    requestId,
-                    server,
-                    typeof(T).Name,
-                    entityId,
-                    stringResponse);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "{entityType} {id} creating error", typeof(T).Name, entityId);
-                throw;
-            }
-        }
-
-        public async Task<ApiObjectDescriptor> CreateAdvertisementPrototypeAsync(long templateId, string langCode, long firmId)
-        {
-            var methodUri = new Uri(_templateUri, $"{templateId}/session?languages={langCode}&firm={firmId}");
+            var methodUri = new Uri(_templateUri, $"{templateId}/{templateVersion}/session?languages={langCode}&firm={firmId}");
             using (var req = new HttpRequestMessage(HttpMethod.Post, methodUri))
             {
                 var server = string.Empty;
@@ -377,7 +305,7 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task<IReadOnlyCollection<ApiListAdvertisement>> GetAdvertisementsByTemplateAsync(long templateId, int? fetchSize)
+        public async Task<IReadOnlyCollection<ApiListAdvertisement>> GetAdvertisementsByTemplateAsync(long templateId, int? fetchSize, long? projectId)
         {
             var server = string.Empty;
             var requestId = string.Empty;
@@ -387,7 +315,7 @@ namespace CloningTool.RestClient
             {
                 for (var pageNum = 1; ; ++pageNum)
                 {
-                    var methodUri = new Uri(_searchUri, $"am?template={templateId}&count={fetchSize ?? ApiFetchMaxSize}&page={pageNum}&sort=createdAt:desc");
+                    var methodUri = new Uri(_searchUri, $"am?template={templateId}&count={fetchSize ?? ApiFetchMaxSize}&page={pageNum}&sort=createdAt:desc&firmProject={projectId}");
                     using (var response = await _authorizedHttpClient.GetAsync(methodUri))
                     {
                         (stringResponse, server, requestId) = await HandleResponse(response);
@@ -497,9 +425,9 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task SelectAdvertisementToWhitelistAsync(string advertisementId)
+        public async Task SelectAdvertisementToWhitelistAsync(long id)
         {
-            var methodUri = new Uri(_amUri, $"{advertisementId}/whiteList");
+            var methodUri = new Uri(_amUri, $"{id.ToString()}/whiteList");
             using (var req = new HttpRequestMessage(HttpMethod.Post, methodUri))
             {
                 var server = string.Empty;
@@ -511,23 +439,23 @@ namespace CloningTool.RestClient
                     {
                         (stringResponse, server, requestId) = await HandleResponse(response);
                         response.EnsureSuccessStatusCode();
-                        _logger.LogInformation("Object {objectId} has been selected to whitelist", advertisementId);
+                        _logger.LogInformation("Advertisement {id} has been selected to whitelist", id);
                     }
                 }
                 catch (HttpRequestException ex)
                 {
                     _logger.LogError(
                         ex,
-                        "Request {requestId} to server {server} error while selecting object {objectId} to whitelist with response: {response}",
+                        "Request {requestId} to server {server} error while selecting advertisement {id} to whitelist with response: {response}",
                         requestId,
                         server,
-                        advertisementId,
+                        id,
                         stringResponse);
                     throw;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error while selecting object {objectId} to whitelist", advertisementId);
+                    _logger.LogError(ex, "Error while selecting advertisement {id} to whitelist", id);
                     throw;
                 }
             }
@@ -584,9 +512,9 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task<string> CreateTemplateAsync(string templateId, ApiTemplateDescriptor template)
+        public async Task<string> CreateTemplateAsync(long id, ApiTemplateDescriptor template)
         {
-            var methodUri = new Uri(_templateUri, templateId);
+            var methodUri = new Uri(_templateUri, id.ToString());
             var server = string.Empty;
             var requestId = string.Empty;
             var stringResponse = string.Empty;
@@ -600,7 +528,7 @@ namespace CloningTool.RestClient
                         response.EnsureSuccessStatusCode();
 
                         var newVersion = response.Headers.ETag.Tag.Trim('"');
-                        _logger.LogInformation("Created template {id} got version: {version}", templateId, newVersion);
+                        _logger.LogInformation("Created template {id} got version: {version}", id, newVersion);
                         return newVersion;
                     }
                 }
@@ -612,62 +540,19 @@ namespace CloningTool.RestClient
                     "Request {requestId} to server {server} error while creating template {id} with response: {response}",
                     requestId,
                     server,
-                    templateId,
+                    id,
                     stringResponse);
                 throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Template {id} creating error", templateId);
+                _logger.LogError(ex, "Template {id} creating error", id);
                 throw;
             }
         }
 
-        public async Task<IReadOnlyCollection<TemplateVersionRecord>> GetTemplateVersionsAsync(string templateId)
-        {
-            var server = string.Empty;
-            var requestId = string.Empty;
-            var stringResponse = string.Empty;
-            var methodUri = new Uri(_templateUri, templateId + "/version");
-            try
-            {
-                using (var response = await _authorizedHttpClient.GetAsync(methodUri))
-                {
-                    (stringResponse, server, requestId) = await HandleResponse(response);
-                    if (response.StatusCode == HttpStatusCode.NotFound &&
-                        server == DefaultServer)
-                    {
-                        _logger.LogInformation("Template {id} not found", templateId);
-                        return Array.Empty<TemplateVersionRecord>();
-                    }
-
-                    response.EnsureSuccessStatusCode();
-                    var versions = JsonConvert.DeserializeObject<IReadOnlyCollection<TemplateVersionRecord>>(stringResponse, ApiSerializerSettings.Default);
-                    if (versions == null || versions.Count < 1)
-                    {
-                        throw new SerializationException("Cannot deserialize template " + templateId + " versions: " + stringResponse);
-                    }
-
-                    return versions;
-                }
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Request {requestId} to server {server} error while getting template {id} versions with response: {response}",
-                    requestId,
-                    server,
-                    templateId,
-                    stringResponse);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(default, ex, "Get template {id} versions error", templateId);
-                throw;
-            }
-        }
+        public async Task<IReadOnlyCollection<TemplateVersionRecord>> GetTemplateVersionsAsync(long id) =>
+            await GetEntityVersionsAsync<TemplateVersionRecord>(id, _templateUri, "template");
 
         public async Task<IReadOnlyCollection<ApiListTemplate>> GetTemplatesAsync()
         {
@@ -725,51 +610,11 @@ namespace CloningTool.RestClient
             }
         }
 
-        public async Task<ApiTemplateDescriptor> GetTemplateAsync(string templateId, string versionId = null)
+        public async Task<ApiTemplateDescriptor> GetTemplateAsync(long id, string versionId = null)
         {
-            var server = string.Empty;
-            var requestId = string.Empty;
-            var stringResponse = string.Empty;
-            var templateIdentifier = templateId + (string.IsNullOrEmpty(versionId) ? string.Empty : $"/{versionId}");
+            var templateIdentifier = id.ToString() + (string.IsNullOrEmpty(versionId) ? string.Empty : $"/{versionId}");
             var methodUri = new Uri(_templateUri, templateIdentifier);
-            try
-            {
-                using (var response = await _authorizedHttpClient.GetAsync(methodUri))
-                {
-                    (stringResponse, server, requestId) = await HandleResponse(response);
-                    if (response.StatusCode == HttpStatusCode.NotFound &&
-                        server == DefaultServer)
-                    {
-                        _logger.LogInformation("Template {id} not found", templateIdentifier);
-                        return null;
-                    }
-
-                    response.EnsureSuccessStatusCode();
-                    var descriptor = JsonConvert.DeserializeObject<ApiTemplateDescriptor>(stringResponse, ApiSerializerSettings.Default);
-                    if (descriptor == null)
-                    {
-                        throw new SerializationException("Cannot deserialize template descriptor " + templateIdentifier + ": " + stringResponse);
-                    }
-
-                    return descriptor;
-                }
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Request {requestId} to server {server} error while getting template {id} with response: {response}",
-                    requestId,
-                    server,
-                    templateIdentifier,
-                    stringResponse);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Get template {id} error", templateIdentifier);
-                throw;
-            }
+            return await GetEntityAsync<ApiTemplateDescriptor>("template", methodUri, id, versionId);
         }
 
         public async Task<string> UpdateTemplateAsync(ApiTemplateDescriptor template, string versionId)
@@ -1040,6 +885,138 @@ namespace CloningTool.RestClient
             if (!succeeded)
             {
                 throw new WebException("Can't establish connection with API");
+            }
+        }
+
+        private async Task ModifyEntityStateAsync<T>(HttpMethod httpMethod, Uri methodUri, string entityId, T entity)
+        {
+            var server = string.Empty;
+            var requestId = string.Empty;
+            var stringResponse = string.Empty;
+            try
+            {
+                using (var content = new StringContent(JsonConvert.SerializeObject(entity, ApiSerializerSettings.Default), Encoding.UTF8, ContentType.Json))
+                {
+                    var request = new HttpRequestMessage(httpMethod, methodUri) { Content = content };
+                    using (var response = await _authorizedHttpClient.SendAsync(request))
+                    {
+                        (stringResponse, server, requestId) = await HandleResponse(response);
+                        response.EnsureSuccessStatusCode();
+                    }
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Request {requestId} to server {server} error while creating {entityType} {id} with response: {response}",
+                    requestId,
+                    server,
+                    typeof(T).Name,
+                    entityId,
+                    stringResponse);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{entityType} {id} creating error", typeof(T).Name, entityId);
+                throw;
+            }
+        }
+
+        private async Task<T> GetEntityAsync<T>(string entityType, Uri methodUri, long id, string versionId)
+            where T : class
+        {
+            var server = string.Empty;
+            var requestId = string.Empty;
+            var stringResponse = string.Empty;
+            var entityId = id.ToString() + (string.IsNullOrEmpty(versionId) ? string.Empty : $"/{versionId}");
+            try
+            {
+                using (var response = await _authorizedHttpClient.GetAsync(methodUri))
+                {
+                    (stringResponse, server, requestId) = await HandleResponse(response);
+                    if (response.StatusCode == HttpStatusCode.NotFound && server == DefaultServer)
+                    {
+                        _logger.LogInformation("The {entity} {id} not found", entityType, entityId);
+                        return null;
+                    }
+
+                    response.EnsureSuccessStatusCode();
+                    var res = JsonConvert.DeserializeObject<T>(stringResponse, ApiSerializerSettings.Default);
+                    if (res == null)
+                    {
+                        throw new SerializationException($"Cannot deserialize response for {entityType} {entityId}: {stringResponse}");
+                    }
+
+                    return res;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Request {requestId} to server {server} error while getting {entity} {id} with response: {response}",
+                    requestId,
+                    server,
+                    entityType,
+                    entityId,
+                    stringResponse);
+
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Getting {entity} {id} error", entityType, entityId);
+                throw;
+            }
+        }
+
+        private async Task<IReadOnlyCollection<T>> GetEntityVersionsAsync<T>(long id, Uri baseUri, string entityName)
+        {
+            var server = string.Empty;
+            var requestId = string.Empty;
+            var stringResponse = string.Empty;
+            var methodUri = new Uri(baseUri, id.ToString() + "/version");
+            try
+            {
+                using (var response = await _authorizedHttpClient.GetAsync(methodUri))
+                {
+                    (stringResponse, server, requestId) = await HandleResponse(response);
+                    if (response.StatusCode == HttpStatusCode.NotFound &&
+                        server == DefaultServer)
+                    {
+                        _logger.LogInformation("The {entity} {id} not found", entityName, id);
+                        return Array.Empty<T>();
+                    }
+
+                    response.EnsureSuccessStatusCode();
+                    var versions = JsonConvert.DeserializeObject<IReadOnlyCollection<T>>(stringResponse, ApiSerializerSettings.Default);
+                    if (versions == null || versions.Count < 1)
+                    {
+                        throw new SerializationException($"Cannot deserialize {entityName} {id.ToString()} versions: {stringResponse}");
+                    }
+
+                    return versions;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Request {requestId} to server {server} error while getting {entity} {id} versions with response: {response}",
+                    requestId,
+                    server,
+                    entityName,
+                    id,
+                    stringResponse);
+
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(default, ex, "Get {entity} {id} versions error", entityName, id);
+                throw;
             }
         }
 
