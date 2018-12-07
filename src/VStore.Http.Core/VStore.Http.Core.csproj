@@ -5,7 +5,7 @@
     <CodeAnalysisRuleSet>..\..\NuClear.CodeStyle.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="StyleCop.Analyzers" Version="1.1.0-beta006" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.1.1-beta.61" PrivateAssets="All" />
     <PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" Version="2.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Abstractions" Version="2.2.0" />

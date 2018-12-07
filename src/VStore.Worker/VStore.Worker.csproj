@@ -25,7 +25,7 @@
     <AdditionalFiles Include="..\..\stylecop.json" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="StyleCop.Analyzers" Version="1.1.0-beta006" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.1.1-beta.61" PrivateAssets="All" />
     <PackageReference Include="Autofac" Version="4.8.1" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="4.3.1" />
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.3.6" />

@@ -8,9 +8,9 @@ namespace NuClear.VStore.Json
 {
     public static class SerializerSettings
     {
-        private static readonly JsonConverter[] CustonConverters =
+        private static readonly JsonConverter[] CustomConverters =
             {
-                new StringEnumConverter { CamelCaseText = true },
+                new StringEnumConverter { NamingStrategy = new CamelCaseNamingStrategy() },
                 new ElementDescriptorJsonConverter(),
                 new ElementDescriptorCollectionJsonConverter(),
                 new TemplateDescriptorJsonConverter(),
@@ -25,9 +25,9 @@ namespace NuClear.VStore.Json
                               Culture = CultureInfo.InvariantCulture,
                               ContractResolver = new CamelCasePropertyNamesContractResolver()
                           };
-            for (var index = 0; index < CustonConverters.Length; index++)
+            for (var index = 0; index < CustomConverters.Length; index++)
             {
-                Default.Converters.Insert(index, CustonConverters[index]);
+                Default.Converters.Insert(index, CustomConverters[index]);
             }
         }
 

@@ -6,7 +6,7 @@
     <CodeAnalysisRuleSet>..\..\NuClear.CodeStyle.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="StyleCop.Analyzers" Version="1.1.0-beta006" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.1.1-beta.61" PrivateAssets="All" />
     <PackageReference Include="2GIS.ChmLibCore" Version="1.0.3" />
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.3.6" />
     <PackageReference Include="AWSSDK.S3" Version="3.3.31" />

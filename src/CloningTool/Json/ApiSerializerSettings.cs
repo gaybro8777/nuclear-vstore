@@ -12,7 +12,7 @@ namespace CloningTool.Json
     {
         private static readonly JsonConverter[] CustomConverters =
             {
-                new StringEnumConverter { CamelCaseText = true },
+                new StringEnumConverter { NamingStrategy = new CamelCaseNamingStrategy() },
                 new ElementDescriptorCollectionJsonConverter(),
                 new ApiObjectElementDescriptorJsonConverter(),
                 new ApiTemplateDescriptorJsonConverter(),
