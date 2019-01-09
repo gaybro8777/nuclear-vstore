@@ -96,12 +96,11 @@ namespace NuClear.VStore.Host
                         options =>
                             {
                                 var policy = new AuthorizationPolicyBuilder()
-                                    .RequireAuthenticatedUser()
-                                    .Build();
+                                             .RequireAuthenticatedUser()
+                                             .Build();
                                 options.Filters.Add(new AuthorizeFilter(policy));
                             })
                     .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
-                    .AddVersionedApiExplorer()
                     .AddApiExplorer()
                     .AddAuthorization()
                     .AddCors()
@@ -118,6 +117,8 @@ namespace NuClear.VStore.Host
                                     settings.Converters.Insert(index, CustomConverters[index]);
                                 }
                             });
+
+            services.AddVersionedApiExplorer();
 
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     .AddJwtBearer(options =>

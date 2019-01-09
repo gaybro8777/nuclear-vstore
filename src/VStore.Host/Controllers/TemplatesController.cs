@@ -19,6 +19,7 @@ using NuClear.VStore.Templates;
 
 namespace NuClear.VStore.Host.Controllers
 {
+    [ApiController]
     [ApiVersion("1.2")]
     [ApiVersion("1.1", Deprecated = true)]
     [ApiVersion("1.0", Deprecated = true)]

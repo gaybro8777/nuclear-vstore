@@ -28,6 +28,7 @@ using NuClear.VStore.Sessions.Upload;
 
 namespace NuClear.VStore.Host.Controllers
 {
+    [ApiController]
     [ApiVersion("1.0")]
     [Route("api/{api-version:apiVersion}/sessions")]
     public sealed class SessionsController : VStoreController

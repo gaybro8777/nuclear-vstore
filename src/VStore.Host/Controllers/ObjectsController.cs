@@ -19,6 +19,7 @@ using NuClear.VStore.S3;
 
 namespace NuClear.VStore.Host.Controllers
 {
+    [ApiController]
     [ApiVersion("1.0")]
     [Route("api/{api-version:apiVersion}/objects")]
     public sealed class ObjectsController : VStoreController
@@ -315,7 +316,7 @@ namespace NuClear.VStore.Host.Controllers
             }
             catch (ObjectAlreadyExistsException)
             {
-                return Conflict("Object with the same id already exists");
+                return Conflict("Object with specified id already exists");
             }
             catch (LockAlreadyExistsException)
             {

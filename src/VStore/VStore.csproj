@@ -9,7 +9,7 @@
     <PackageReference Include="StyleCop.Analyzers" Version="1.1.1-beta.61" PrivateAssets="All" />
     <PackageReference Include="2GIS.ChmLibCore" Version="1.0.3" />
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.3.6" />
-    <PackageReference Include="AWSSDK.S3" Version="3.3.31" />
+    <PackageReference Include="AWSSDK.S3" Version="3.3.31.8" />
     <PackageReference Include="Confluent.Kafka" Version="0.11.6" />
     <PackageReference Include="HtmlAgilityPack" Version="1.8.11" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="2.2.0" />

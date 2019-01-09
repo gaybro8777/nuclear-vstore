@@ -60,18 +60,19 @@ namespace NuClear.VStore.Renderer
 
             services.AddMvcCore()
                     .SetCompatibilityVersion(CompatibilityVersion.Version_2_2)
-                    .AddVersionedApiExplorer()
                     .AddApiExplorer()
                     .AddCors()
                     .AddJsonFormatters();
 
-            services.AddApiVersioning(
-                options =>
-                    {
-                        options.ReportApiVersions = true;
-                        options.DefaultApiVersion = new ApiVersion(1, 0);
-                        options.AssumeDefaultVersionWhenUnspecified = true;
-                    });
+            services.AddVersionedApiExplorer()
+                    .AddApiVersioning(
+                        options =>
+                            {
+                                options.ReportApiVersions = true;
+                                options.DefaultApiVersion = new ApiVersion(1, 0);
+                                options.AssumeDefaultVersionWhenUnspecified = true;
+                            });
+
             services.AddMemoryCache();
             services.AddSwaggerGen(
                 options =>
