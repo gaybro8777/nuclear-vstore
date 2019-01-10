@@ -20,7 +20,6 @@ using NuClear.VStore.Descriptors;
 using NuClear.VStore.Descriptors.Objects;
 using NuClear.VStore.Descriptors.Sessions;
 using NuClear.VStore.Http.Core.Controllers;
-using NuClear.VStore.Http.Core.Extensions;
 using NuClear.VStore.Http.Core.Filters;
 using NuClear.VStore.Json;
 using NuClear.VStore.Options;

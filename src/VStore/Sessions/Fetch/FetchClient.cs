@@ -14,7 +14,7 @@ using Polly;
 using Polly.Timeout;
 using Polly.Wrap;
 
-using Prometheus.Client;
+using Prometheus;
 
 namespace NuClear.VStore.Sessions.Fetch
 {
