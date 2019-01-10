@@ -272,6 +272,8 @@ namespace NuClear.VStore.Host
                    .WithParameter(
                        (parameterInfo, context) => parameterInfo.ParameterType == typeof(IS3Client),
                        (parameterInfo, context) => context.Resolve<ICephS3Client>())
+                   .As<ITemplatesManagementService>()
+                   .PreserveExistingDefaults()
                    .SingleInstance();
             builder.RegisterType<ObjectsStorageReader>()
                    .WithParameter(

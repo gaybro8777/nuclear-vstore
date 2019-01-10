@@ -14,6 +14,7 @@ using NoContentResult = NuClear.VStore.Http.Core.ActionResults.NoContentResult;
 
 namespace NuClear.VStore.Http.Core.Controllers
 {
+    [ApiController]
     public abstract class VStoreController : ControllerBase
     {
         [NonAction]

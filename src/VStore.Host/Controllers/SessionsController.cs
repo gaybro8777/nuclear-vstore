@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -28,7 +29,6 @@ using NuClear.VStore.Sessions.Upload;
 
 namespace NuClear.VStore.Host.Controllers
 {
-    [ApiController]
     [ApiVersion("1.0")]
     [Route("api/{api-version:apiVersion}/sessions")]
     public sealed class SessionsController : VStoreController
@@ -103,6 +103,7 @@ namespace NuClear.VStore.Host.Controllers
         /// <summary>
         /// Create session for uploading file(-s) using latest version of template
         /// </summary>
+        /// <param name="apiVersion">API version</param>
         /// <param name="author">Author identifier</param>
         /// <param name="authorLogin">Author login</param>
         /// <param name="authorName">Author name</param>
@@ -114,6 +115,7 @@ namespace NuClear.VStore.Host.Controllers
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 404)]
         public async Task<IActionResult> SetupSession(
+            ApiVersion apiVersion,
             [FromHeader(Name = Http.HeaderNames.AmsAuthor)] string author,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorLogin)] string authorLogin,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorName)] string authorName,
@@ -131,10 +133,10 @@ namespace NuClear.VStore.Host.Controllers
             {
                 var sessionId = Guid.NewGuid();
                 await _sessionManagementService.Setup(sessionId, templateId, null, language, new AuthorInfo(author, authorLogin, authorName));
-                var url = Url.AbsoluteAction("Get", "Sessions", new { sessionId });
 
                 Response.Headers[HeaderNames.ETag] = $"\"{sessionId}\"";
-                return Created(url,  null);
+                var routeValues = new Dictionary<string, string> { { "api-version", apiVersion.ToString() }, { nameof(sessionId), sessionId.ToString() } };
+                return CreatedAtAction(nameof(Get), routeValues, null);
             }
             catch (ObjectNotFoundException ex)
             {
@@ -149,6 +151,7 @@ namespace NuClear.VStore.Host.Controllers
         /// <summary>
         /// Create session for uploading file(-s) using specific version of template
         /// </summary>
+        /// <param name="apiVersion">API version</param>
         /// <param name="author">Author identifier</param>
         /// <param name="authorLogin">Author login</param>
         /// <param name="authorName">Author name</param>
@@ -161,6 +164,7 @@ namespace NuClear.VStore.Host.Controllers
         [ProducesResponseType(typeof(string), 400)]
         [ProducesResponseType(typeof(string), 404)]
         public async Task<IActionResult> SetupSession(
+            ApiVersion apiVersion,
             [FromHeader(Name = Http.HeaderNames.AmsAuthor)] string author,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorLogin)] string authorLogin,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorName)] string authorName,
@@ -179,10 +183,10 @@ namespace NuClear.VStore.Host.Controllers
             {
                 var sessionId = Guid.NewGuid();
                 await _sessionManagementService.Setup(sessionId, templateId, templateVersionId, language, new AuthorInfo(author, authorLogin, authorName));
-                var url = Url.AbsoluteAction("Get", "Sessions", new { sessionId });
 
                 Response.Headers[HeaderNames.ETag] = $"\"{sessionId}\"";
-                return Created(url,  null);
+                var routeValues = new Dictionary<string, string> { { "api-version", apiVersion.ToString() }, { nameof(sessionId), sessionId.ToString() } };
+                return CreatedAtAction(nameof(Get), routeValues, null);
             }
             catch (ObjectNotFoundException ex)
             {

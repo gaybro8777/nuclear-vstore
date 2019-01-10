@@ -25,7 +25,9 @@ using NuClear.VStore.Descriptors.Templates;
 using NuClear.VStore.Host;
 using NuClear.VStore.Locks;
 using NuClear.VStore.Objects;
+using NuClear.VStore.Options;
 using NuClear.VStore.S3;
+using NuClear.VStore.Templates;
 
 using RedLockNet;
 
@@ -41,6 +43,7 @@ namespace VStore.UnitTests
         private readonly HttpClient _client;
         private readonly Mock<IObjectsStorageReader> _mockObjectsStorageReader = new Mock<IObjectsStorageReader>();
         private readonly Mock<IObjectsManagementService> _mockObjectsManagementService = new Mock<IObjectsManagementService>();
+        private readonly Mock<ITemplatesManagementService> _mockTemplatesManagementService = new Mock<ITemplatesManagementService>();
         private static readonly JTokenEqualityComparer JTokenEqualityComparer = new JTokenEqualityComparer();
 
         public HostTests(ITestOutputHelper testOutputHelper)
@@ -63,6 +66,7 @@ namespace VStore.UnitTests
                                             x.RegisterInstance(new InMemoryLockFactory()).As<IDistributedLockFactory>();
                                             x.RegisterInstance(_mockObjectsStorageReader.Object).As<IObjectsStorageReader>();
                                             x.RegisterInstance(_mockObjectsManagementService.Object).As<IObjectsManagementService>();
+                                            x.RegisterInstance(_mockTemplatesManagementService.Object).As<ITemplatesManagementService>();
                                         });
                             })
                     .UseStartup<Startup>());
@@ -78,10 +82,16 @@ namespace VStore.UnitTests
         [InlineData("1.0")]
         [InlineData("1.1")]
         [InlineData("1.2")]
+        [InlineData("0.9", false)]
         [InlineData("1.3", false)]
         [InlineData("2.0", false)]
         public async Task TestGetAvailableElementDescriptors(string version, bool shouldSuccess = true)
         {
+            var unmockedService = new TemplatesManagementService(new UploadFileOptions(), new CephOptions(), null, null, null);
+            _mockTemplatesManagementService.Reset();
+            _mockTemplatesManagementService.Setup(x => x.GetAvailableElementDescriptors())
+                                           .Returns(unmockedService.GetAvailableElementDescriptors());
+
             using (var response = await _client.GetAsync($"/api/{version}/templates/element-descriptors/available"))
             {
                 if (shouldSuccess)
@@ -97,6 +107,8 @@ namespace VStore.UnitTests
                     Assert.False(response.IsSuccessStatusCode);
                 }
             }
+
+            _mockTemplatesManagementService.Reset();
         }
 
         [Fact]
@@ -212,8 +224,9 @@ namespace VStore.UnitTests
             _mockObjectsStorageReader.Reset();
         }
 
-        [Fact]
-        public async Task TestObjectDeserialization()
+        [Theory]
+        [InlineData("1.0")]
+        public async Task TestObjectDeserialization(string apiVersion)
         {
             const long ObjectId = 123L;
             const string CreatedObjectVersion = "some_version_id";
@@ -249,7 +262,7 @@ namespace VStore.UnitTests
 
             using (var httpContent = new StringContent(ObjectJson, Encoding.UTF8, NuClear.VStore.Http.ContentType.Json))
             {
-                using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/1.0/objects/{ObjectId}"))
+                using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/{apiVersion}/objects/{ObjectId}"))
                 {
                     request.Content = httpContent;
                     request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthor, authorInfo.Author);
@@ -258,6 +271,8 @@ namespace VStore.UnitTests
                     using (var response = await _client.SendAsync(request))
                     {
                         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+                        Assert.NotNull(response.Headers.Location);
+                        Assert.Equal($"/api/{apiVersion}/objects/{ObjectId}/{CreatedObjectVersion}", response.Headers.Location.PathAndQuery);
                         Assert.Equal($"\"{CreatedObjectVersion}\"", response.Headers.ETag.Tag);
 
                         Assert.NotNull(receivedDescriptor);
@@ -290,6 +305,83 @@ namespace VStore.UnitTests
             }
 
             _mockObjectsManagementService.Reset();
+        }
+
+        [Theory]
+        [InlineData("1.0")]
+        [InlineData("1.1")]
+        [InlineData("1.2")]
+        public async Task TestTemplateDeserialization(string apiVersion)
+        {
+            const long TemplateId = 100500L;
+            const string CreatedTemplateVersion = "some_version_id";
+            var authorInfo = new AuthorInfo("id", "login", "name");
+            ITemplateDescriptor receivedDescriptor = null;
+
+            _mockTemplatesManagementService.Reset();
+            _mockTemplatesManagementService.Setup(x => x.CreateTemplate(It.IsAny<long>(), It.IsAny<AuthorInfo>(), It.IsAny<ITemplateDescriptor>()))
+                                           .Callback<long, AuthorInfo, ITemplateDescriptor>((id, author, descriptor) => receivedDescriptor = descriptor)
+                                           .ReturnsAsync(CreatedTemplateVersion);
+
+            const string ObjectJson =
+@"{
+    ""properties"": { ""baz"": 123, ""foo"": ""bar"" },
+    ""elements"": [{
+        ""type"": ""plainText"",
+        ""templateCode"": 911,
+        ""id"": 100500,
+        ""properties"": { ""foo"": ""bar"", ""baz"": [ 321, 456 ] },
+        ""constraints"": {
+            ""unspecified"": {
+                ""maxSymbols"": 10,
+                ""maxSymbolsPerWord"": null,
+                ""maxLines"": 2
+            }
+        }
+    }]
+}";
+
+            using (var httpContent = new StringContent(ObjectJson, Encoding.UTF8, NuClear.VStore.Http.ContentType.Json))
+            {
+                using (var request = new HttpRequestMessage(HttpMethod.Post, $"/api/{apiVersion}/templates/{TemplateId}"))
+                {
+                    request.Content = httpContent;
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthor, authorInfo.Author);
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthorLogin, authorInfo.AuthorLogin);
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthorName, authorInfo.AuthorName);
+                    using (var response = await _client.SendAsync(request))
+                    {
+                        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+                        Assert.NotNull(response.Headers.Location);
+                        Assert.Equal($"/api/{apiVersion}/templates/{TemplateId}/{CreatedTemplateVersion}", response.Headers.Location.PathAndQuery);
+                        Assert.Equal($"\"{CreatedTemplateVersion}\"", response.Headers.ETag.Tag);
+
+                        Assert.NotNull(receivedDescriptor);
+                        Assert.Equal(JObject.Parse(@"{""foo"": ""bar"", ""baz"": 123}"), receivedDescriptor.Properties, JTokenEqualityComparer);
+
+                        Assert.Single(receivedDescriptor.Elements);
+                        var element = receivedDescriptor.Elements.First();
+                        Assert.Equal(ElementDescriptorType.PlainText, element.Type);
+                        Assert.Equal(911, element.TemplateCode);
+                        Assert.Equal(JObject.Parse(@"{""foo"": ""bar"", ""baz"": [ 321, 456 ]}"), element.Properties, JTokenEqualityComparer);
+
+                        Assert.Single(element.Constraints);
+                        var constraintSetItem = element.Constraints.First<ConstraintSetItem>();
+                        Assert.IsType<PlainTextElementConstraints>(constraintSetItem.ElementConstraints);
+                        var constraints = (PlainTextElementConstraints)constraintSetItem.ElementConstraints;
+                        Assert.Equal(new PlainTextElementConstraints { MaxLines = 2, MaxSymbols = 10, MaxSymbolsPerWord = null }, constraints);
+
+                        _mockTemplatesManagementService.Verify(x => x.CreateTemplate(TemplateId,
+                                                                                     It.Is<AuthorInfo>(a => a.Author == authorInfo.Author &&
+                                                                                                            a.AuthorLogin == authorInfo.AuthorLogin &&
+                                                                                                            a.AuthorName == authorInfo.AuthorName),
+                                                                                     It.IsAny<ITemplateDescriptor>()),
+                                                               Times.Exactly(1));
+                    }
+                }
+            }
+
+            _mockTemplatesManagementService.Reset();
         }
 
         [Theory]

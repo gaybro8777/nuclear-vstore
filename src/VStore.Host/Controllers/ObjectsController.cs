@@ -19,7 +19,6 @@ using NuClear.VStore.S3;
 
 namespace NuClear.VStore.Host.Controllers
 {
-    [ApiController]
     [ApiVersion("1.0")]
     [Route("api/{api-version:apiVersion}/objects")]
     public sealed class ObjectsController : VStoreController
@@ -266,6 +265,7 @@ namespace NuClear.VStore.Host.Controllers
         /// Create new object
         /// </summary>
         /// <param name="id">Object identifier</param>
+        /// <param name="apiVersion">API version</param>
         /// <param name="author">Author identifier</param>
         /// <param name="authorLogin">Author login</param>
         /// <param name="authorName">Author name</param>
@@ -280,6 +280,7 @@ namespace NuClear.VStore.Host.Controllers
         [ProducesResponseType(423)]
         public async Task<IActionResult> Create(
             long id,
+            ApiVersion apiVersion,
             [FromHeader(Name = Http.HeaderNames.AmsAuthor)] string author,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorLogin)] string authorLogin,
             [FromHeader(Name = Http.HeaderNames.AmsAuthorName)] string authorName,
@@ -300,10 +301,10 @@ namespace NuClear.VStore.Host.Controllers
             try
             {
                 var versionId = await _objectsManagementService.Create(id, new AuthorInfo(author, authorLogin, authorName), objectDescriptor);
-                var url = Url.AbsoluteAction("GetVersion", "Objects", new { id, versionId });
 
                 Response.Headers[HeaderNames.ETag] = $"\"{versionId}\"";
-                return Created(url, null);
+                var routeValues = new Dictionary<string, string> { { "api-version", apiVersion.ToString() }, { nameof(id), id.ToString() }, { nameof(versionId), versionId } };
+                return CreatedAtAction(nameof(GetVersion), routeValues, null);
             }
             catch (InvalidObjectException ex)
             {

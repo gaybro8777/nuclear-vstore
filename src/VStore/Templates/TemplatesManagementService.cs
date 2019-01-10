@@ -22,7 +22,7 @@ using NuClear.VStore.S3;
 
 namespace NuClear.VStore.Templates
 {
-    public sealed class TemplatesManagementService
+    public sealed class TemplatesManagementService : ITemplatesManagementService
     {
         private static readonly IReadOnlyCollection<FileFormat> BitmapImageFileFormats =
             new[] { FileFormat.Bmp, FileFormat.Gif, FileFormat.Png };

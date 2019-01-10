@@ -17,7 +17,7 @@ namespace NuClear.VStore.Http.Core.Swashbuckle
         /// <param name="context">The current operation filter context.</param>
         public void Apply(Operation operation, OperationFilterContext context)
         {
-            if ( operation.Parameters == null )
+            if (operation.Parameters == null)
             {
                 return;
             }
