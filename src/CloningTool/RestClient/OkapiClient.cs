@@ -69,7 +69,7 @@ namespace CloningTool.RestClient
             {
                 using (var content = new StringContent(JsonConvert.SerializeObject(advertisement, ApiSerializerSettings.Default), Encoding.UTF8, ContentType.Json))
                 {
-                    using (var response = await _authorizedHttpClient.PutAsync(methodUri, content))
+                    using (var response = await _authorizedHttpClient.PostAsync(methodUri, content))
                     {
                         (stringResponse, server, requestId) = await HandleResponse(response);
                         if (response.StatusCode == HttpStatusCode.Conflict)
