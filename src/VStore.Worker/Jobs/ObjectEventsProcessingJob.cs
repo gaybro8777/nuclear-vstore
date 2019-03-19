@@ -135,7 +135,7 @@ namespace NuClear.VStore.Worker.Jobs
                                  }
                              });
 
-        private static PolicyWrap<IReadOnlyCollection<ObjectVersionRecord>> CreateGetObjectVersionsResiliencePolicy()
+        private static AsyncPolicyWrap<IReadOnlyCollection<ObjectVersionRecord>> CreateGetObjectVersionsResiliencePolicy()
         {
             var fallback =
                 Policy<IReadOnlyCollection<ObjectVersionRecord>>

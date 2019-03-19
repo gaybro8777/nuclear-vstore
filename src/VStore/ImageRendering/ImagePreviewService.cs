@@ -28,9 +28,9 @@ namespace NuClear.VStore.ImageRendering
         private static readonly Dictionary<string, IImageEncoder> Encoders =
             new Dictionary<string, IImageEncoder>
                 {
-                    { ImageFormats.Jpeg.DefaultMimeType, new JpegEncoder { Quality = 100, IgnoreMetadata = true } },
-                    { ImageFormats.Png.DefaultMimeType, new PngEncoder { CompressionLevel = 1 } },
-                    { ImageFormats.Gif.DefaultMimeType, new GifEncoder { IgnoreMetadata = true } }
+                    { JpegFormat.Instance.DefaultMimeType, new JpegEncoder { Quality = 100 } },
+                    { PngFormat.Instance.DefaultMimeType, new PngEncoder { CompressionLevel = 1 } },
+                    { GifFormat.Instance.DefaultMimeType, new GifEncoder() }
                 };
 
         private readonly string _bucketName;
@@ -183,7 +183,7 @@ namespace NuClear.VStore.ImageRendering
 
             var extentImage = new Image<Rgba32>(unionRectangle.Width, unionRectangle.Height);
             extentImage.Mutate(x => x.BackgroundColor(backgroundColor)
-                                     .DrawImage(GraphicsOptions.Default, image, new Point(-unionRectangle.X, -unionRectangle.Y))
+                                     .DrawImage(image, new Point(-unionRectangle.X, -unionRectangle.Y), GraphicsOptions.Default)
                                      .Crop(cropAreaRectangle));
 
             return extentImage;
@@ -246,7 +246,7 @@ namespace NuClear.VStore.ImageRendering
         {
             var corners = GetClippedRect(image.Width, image.Height, cornerRadius);
             image.Mutate(ctx => ctx.Fill(
-                             new GraphicsOptions { BlenderMode = PixelBlenderMode.Src, Antialias = false },
+                             new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.Src, Antialias = false },
                              Rgba32.Transparent,
                              corners));
         }
@@ -318,7 +318,7 @@ namespace NuClear.VStore.ImageRendering
                     Resize(target, new Size(width, height));
                     mutateImage?.Invoke(target);
 
-                    var pngFormat = ImageFormats.Png;
+                    var pngFormat = PngFormat.Instance;
                     var targetStream = Encode(target, pngFormat);
                     return (targetStream, pngFormat.DefaultMimeType);
                 }

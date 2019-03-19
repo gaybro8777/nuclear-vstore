@@ -8,6 +8,10 @@ using NuClear.VStore.Descriptors.Templates;
 using NuClear.VStore.Sessions.ContentValidation.Errors;
 
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Bmp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 
 namespace NuClear.VStore.Sessions.ContentValidation
@@ -17,11 +21,11 @@ namespace NuClear.VStore.Sessions.ContentValidation
         private static readonly IReadOnlyDictionary<FileFormat, string> ImageFormatToMimeTypeMap =
             new Dictionary<FileFormat, string>
                 {
-                    { FileFormat.Bmp, ImageFormats.Bmp.DefaultMimeType },
-                    { FileFormat.Gif, ImageFormats.Gif.DefaultMimeType },
-                    { FileFormat.Jpeg, ImageFormats.Jpeg.DefaultMimeType },
-                    { FileFormat.Jpg, ImageFormats.Jpeg.DefaultMimeType },
-                    { FileFormat.Png, ImageFormats.Png.DefaultMimeType }
+                    { FileFormat.Bmp, BmpFormat.Instance.DefaultMimeType },
+                    { FileFormat.Gif, GifFormat.Instance.DefaultMimeType },
+                    { FileFormat.Jpeg, JpegFormat.Instance.DefaultMimeType },
+                    { FileFormat.Jpg, JpegFormat.Instance.DefaultMimeType },
+                    { FileFormat.Png, PngFormat.Instance.DefaultMimeType }
                 };
 
         public static void ValidateBitmapImageHeader(

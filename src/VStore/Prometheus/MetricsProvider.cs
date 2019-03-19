@@ -19,17 +19,27 @@ namespace NuClear.VStore.Prometheus
             Metrics.CreateHistogram(
                 string.Join(JoinSeparator, Names.RequestDurationMetric, NonBaseUnits.Milliseconds),
                 "Request duration in milliseconds",
-                new double[] { 5, 10, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 5000, 10000, 15000, 20000 },
-                Names.BackendLabel,
-                Names.TypeLabel,
-                Names.MethodLabel);
+                new HistogramConfiguration
+                    {
+                        Buckets = new double[] { 5, 10, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 5000, 10000, 15000, 20000 },
+                        LabelNames = new[]
+                            {
+                                Names.BackendLabel,
+                                Names.TypeLabel,
+                                Names.MethodLabel
+                            }
+                    });
 
         private readonly Histogram _fetchDurationMs =
             Metrics.CreateHistogram(
                 string.Join(JoinSeparator, Names.FetchDurationMetric, NonBaseUnits.Milliseconds),
                 "Fetch request duration in milliseconds",
-                new double[] { 5, 10, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 5000, 10000, 15000, 20000 },
-                Names.HostLabel);
+                new HistogramConfiguration
+                    {
+                        Buckets =
+                            new double[] { 5, 10, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 5000, 10000, 15000, 20000 },
+                        LabelNames = new[] { Names.HostLabel }
+                    });
 
         private readonly Counter _requestErrors =
             Metrics.CreateCounter(Names.RequestErrorsMetric, "Request errors count", Names.BackendLabel, Names.TypeLabel, Names.MethodLabel);

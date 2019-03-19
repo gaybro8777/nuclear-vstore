@@ -28,7 +28,7 @@ namespace NuClear.VStore.Sessions.Fetch
         private readonly Counter _fetchErrorsMetric;
         private readonly Counter _fetchRetriesMetric;
         private readonly Histogram _fetchDurationMsMetric;
-        private readonly PolicyWrap _timeoutWithRetryPolicy;
+        private readonly AsyncPolicyWrap _timeoutWithRetryPolicy;
         private readonly Counter _interruptedFetchRequestsMetric;
         private static readonly HttpClient HttpClient = new HttpClient();
 
@@ -46,7 +46,7 @@ namespace NuClear.VStore.Sessions.Fetch
                                     .Or<TimeoutRejectedException>()
                                     .RetryAsync(_maxRetryCount, RetryHandler);
 
-            _timeoutWithRetryPolicy = retryPolicy.Wrap(timeoutPolicy);
+            _timeoutWithRetryPolicy = retryPolicy.WrapAsync(timeoutPolicy);
         }
 
         /// <inheritdoc />

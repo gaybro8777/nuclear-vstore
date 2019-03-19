@@ -39,7 +39,7 @@ namespace NuClear.VStore.Locks
             Policy.Handle<Exception>(ex => !(ex is LockAlreadyExistsException))
                   .WaitAndRetry(RetryCount, attempt => RetryTimeout);
 
-        private static readonly RetryPolicy RetryPolicyAsync =
+        private static readonly AsyncRetryPolicy RetryPolicyAsync =
             Policy.Handle<Exception>(ex => !(ex is LockAlreadyExistsException))
                   .WaitAndRetryAsync(RetryCount, attempt => RetryTimeout);
 

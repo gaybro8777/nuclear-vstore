@@ -117,7 +117,7 @@ namespace NuClear.VStore.Worker.Jobs
                                  });
         }
 
-        private static RetryPolicy<List<KafkaEvent<BinaryReferencedEvent>>> CreateReferenceEventsReadingPolicy(
+        private static AsyncRetryPolicy<List<KafkaEvent<BinaryReferencedEvent>>> CreateReferenceEventsReadingPolicy(
             ILogger logger,
             DateTime dateToStart,
             TimeSpan delay)
