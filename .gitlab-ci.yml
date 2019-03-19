@@ -19,7 +19,7 @@ build:app:
   when: always
   script:
     - dotnet restore --runtime alpine.3.9-x64
-    - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=lcov /p:CoverletOutput="`pwd`/coverage/"
+    - dotnet test tests/VStore.UnitTests/VStore.UnitTests.csproj --configuration Release /p:CollectCoverage=true /p:Include="[Build]*" /p:CoverletOutputFormat=lcov /p:CoverletOutput="`pwd`/coverage/"
     - dotnet publish src/VStore.Host --configuration Release --runtime alpine.3.9-x64 --output ../../publish/vstore
     - dotnet publish src/VStore.Worker --configuration Release --runtime alpine.3.9-x64 --output ../../publish/vstore-worker
     - dotnet publish src/VStore.Renderer --configuration Release --runtime alpine.3.9-x64 --output ../../publish/vstore-renderer
