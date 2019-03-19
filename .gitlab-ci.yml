@@ -14,7 +14,7 @@ before_script:
 # ================= Test & Build =================
 
 build:app:
-  image: $REGISTRY/microsoft/dotnet:2.2.105-sdk-alpine3.9
+  image: $REGISTRY/dotnet/core/sdk:2.2.105-alpine3.9
   stage: build
   when: always
   script:
@@ -36,7 +36,7 @@ build:app:
       - publish/vstore-renderer/
 
 build:cloning-tool:
-  image: $REGISTRY/microsoft/dotnet:2.2.105-sdk-alpine3.9
+  image: $REGISTRY/dotnet/core/sdk:2.2.105-alpine3.9
   stage: build
   when: manual
   script:
