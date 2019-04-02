@@ -5,7 +5,9 @@
         FileType FileType { get; }
 
         string FileName { get; }
+
         string ContentType { get; }
+
         long FileLength { get; }
     }
 }

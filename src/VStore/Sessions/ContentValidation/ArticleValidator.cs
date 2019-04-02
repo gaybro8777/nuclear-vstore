@@ -11,20 +11,19 @@ namespace NuClear.VStore.Sessions.ContentValidation
     {
         public static void ValidateArticle(int templateCode, Stream inputStream)
         {
+            if (!inputStream.CanSeek)
+            {
+                throw new InvalidOperationException($"Parameter '{nameof(inputStream)}' is not a seekable stream");
+            }
+
             var enumeratorContext = new EnumeratorContext { IsGoalReached = false };
             try
             {
-                using (var memoryStream = new MemoryStream())
-                {
-                    inputStream.CopyTo(memoryStream);
-                    memoryStream.Position = 0;
-
-                    ChmFile.Open(memoryStream)
-                           .Enumerate(
-                               EnumerateLevel.Normal | EnumerateLevel.Files,
-                               ArticleEnumeratorCallback,
-                               enumeratorContext);
-                }
+                ChmFile.Open(inputStream)
+                       .Enumerate(
+                           EnumerateLevel.Normal | EnumerateLevel.Files,
+                           ArticleEnumeratorCallback,
+                           enumeratorContext);
             }
             catch (InvalidDataException)
             {

@@ -2,13 +2,13 @@
 {
     public sealed class BinaryMetadata
     {
-        public BinaryMetadata(string filename, long filesize)
+        public BinaryMetadata(string filename, long fileSize)
         {
             Filename = filename;
-            Filesize = filesize;
+            FileSize = fileSize;
         }
 
         public string Filename { get; }
-        public long Filesize { get; }
+        public long FileSize { get; }
     }
 }

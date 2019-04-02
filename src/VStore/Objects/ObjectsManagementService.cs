@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,7 @@ using NuClear.VStore.Options;
 using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
 using NuClear.VStore.Sessions;
+using NuClear.VStore.Sessions.Upload;
 using NuClear.VStore.Templates;
 
 using Prometheus.Client;
@@ -43,6 +45,7 @@ namespace NuClear.VStore.Objects
         private readonly DistributedLockManager _distributedLockManager;
         private readonly IEventSender _eventSender;
         private readonly string _bucketName;
+        private readonly string _filesBucketName;
         private readonly string _objectEventsTopic;
         private readonly Counter _referencedBinariesMetric;
 
@@ -64,6 +67,7 @@ namespace NuClear.VStore.Objects
             _distributedLockManager = distributedLockManager;
             _eventSender = eventSender;
             _bucketName = cephOptions.ObjectsBucketName;
+            _filesBucketName = cephOptions.FilesBucketName;
             _objectEventsTopic = kafkaOptions.ObjectEventsTopic;
             _referencedBinariesMetric = metricsProvider.GetReferencedBinariesMetric();
         }
@@ -125,6 +129,20 @@ namespace NuClear.VStore.Objects
                         $"Modified and latest objects templates do not match ({modifiedObjectDescriptor.TemplateId} and {objectDescriptor.TemplateId}).");
                 }
 
+                if (!string.Equals(modifiedObjectDescriptor.TemplateVersionId, objectDescriptor.TemplateVersionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ObjectInconsistentException(
+                        id,
+                        $"Modified and latest objects template versions do not match ({modifiedObjectDescriptor.TemplateVersionId} and {objectDescriptor.TemplateVersionId}).");
+                }
+
+                if (modifiedObjectDescriptor.Language != objectDescriptor.Language)
+                {
+                    throw new ObjectInconsistentException(
+                        id,
+                        $"Modified and latest objects languages do not match ({modifiedObjectDescriptor.Language} and {objectDescriptor.Language}).");
+                }
+
                 var modifiedElementsIds = new HashSet<long>(modifiedObjectDescriptor.Elements.Select(x => x.Id));
                 if (modifiedElementsIds.Count != modifiedObjectDescriptor.Elements.Count)
                 {
@@ -172,9 +190,16 @@ namespace NuClear.VStore.Objects
                         $"Upgraded and latest objects templates do not match ({upgradedObjectDescriptor.TemplateId} and {latestObjectDescriptor.TemplateId}).");
                 }
 
-                if (upgradedObjectDescriptor.TemplateVersionId.Equals(latestObjectDescriptor.TemplateVersionId, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(upgradedObjectDescriptor.TemplateVersionId, latestObjectDescriptor.TemplateVersionId, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ObjectUpgradeException(id, "Upgraded and latest objects template versions do not differ.");
+                }
+
+                if (upgradedObjectDescriptor.Language != latestObjectDescriptor.Language)
+                {
+                    throw new ObjectUpgradeException(
+                        id,
+                        $"Upgraded and latest objects languages do not match ({upgradedObjectDescriptor.Language} and {latestObjectDescriptor.Language}).");
                 }
 
                 var upgradedObjectTemplateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(upgradedObjectDescriptor.TemplateId, upgradedObjectDescriptor.TemplateVersionId);
@@ -198,8 +223,55 @@ namespace NuClear.VStore.Objects
                 }
 
                 EnsureObjectElementsState(id, upgradedObjectTemplateDescriptor.Elements, upgradedObjectDescriptor.Elements);
+                await EnsureBinaryElementsAreValid(upgradedObjectDescriptor);
 
                 return await PutObject(id, versionId, authorInfo, latestObjectDescriptor.Elements, upgradedObjectDescriptor, modifiedElementsTemplateCodes);
+            }
+        }
+
+        private async Task EnsureBinaryElementsAreValid(IObjectDescriptor objectDescriptor)
+        {
+            foreach (var binaryElement in objectDescriptor.Elements.GetBinaryElements())
+            {
+                var constraints = binaryElement.Constraints.For(objectDescriptor.Language);
+                var fileKeys = binaryElement.Value.ExtractFileKeys();
+                foreach (var fileKey in fileKeys)
+                {
+                    using (var getResponse = await _s3Client.GetObjectAsync(_filesBucketName, fileKey))
+                    {
+                        var memoryStream = new MemoryStream();
+                        using (getResponse.ResponseStream)
+                        {
+                            getResponse.ResponseStream.CopyTo(memoryStream);
+                            memoryStream.Position = 0;
+                        }
+
+                        using (memoryStream)
+                        {
+                            var metadataWrapper = MetadataCollectionWrapper.For(getResponse.Metadata);
+                            var fileName = metadataWrapper.Read<string>(MetadataElement.Filename);
+                            IUploadedFileMetadata binaryMetadata;
+                            if (binaryElement.Value is ICompositeBitmapImageElementValue compositeBitmapImageElementValue &&
+                                compositeBitmapImageElementValue.Raw != fileKey)
+                            {
+                                var image = compositeBitmapImageElementValue.SizeSpecificImages.First(x => x.Raw == fileKey);
+                                binaryMetadata = new UploadedImageMetadata(
+                                    fileName,
+                                    getResponse.Headers.ContentType,
+                                    getResponse.ContentLength,
+                                    image.Size);
+                            }
+                            else
+                            {
+                                binaryMetadata = new GenericUploadedFileMetadata(fileName, getResponse.Headers.ContentType, getResponse.ContentLength);
+                            }
+
+                            BinaryValidationUtils.EnsureFileMetadataIsValid(binaryElement, objectDescriptor.Language, binaryMetadata);
+                            BinaryValidationUtils.EnsureFileHeaderIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, binaryMetadata);
+                            BinaryValidationUtils.EnsureFileContentIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, fileName);
+                        }
+                    }
+                }
             }
         }
 
@@ -450,7 +522,7 @@ namespace NuClear.VStore.Objects
                                                                             return new CompositeBitmapImageElementPersistenceValue.SizeSpecificImage
                                                                                 {
                                                                                     Filename = imageMetadata.Filename,
-                                                                                    Filesize = imageMetadata.Filesize,
+                                                                                    Filesize = imageMetadata.FileSize,
                                                                                     Raw = image.Raw,
                                                                                     Size = image.Size
                                                                                 };
@@ -459,7 +531,7 @@ namespace NuClear.VStore.Objects
                         var persistenceValue = new CompositeBitmapImageElementPersistenceValue(
                             compositeBitmapImageElementValue.Raw,
                             metadata.Filename,
-                            metadata.Filesize,
+                            metadata.FileSize,
                             compositeBitmapImageElementValue.CropArea,
                             sizeSpecificImages);
                         return (persistenceValue, sizeSpecificImages.Count + 1);
@@ -470,13 +542,13 @@ namespace NuClear.VStore.Objects
                         var persistenceValue = new ScalableBitmapImageElementPersistenceValue(
                             scalableBitmapImageElementValue.Raw,
                             metadata.Filename,
-                            metadata.Filesize,
+                            metadata.FileSize,
                             scalableBitmapImageElementValue.Anchor);
                         return (persistenceValue, 1);
                     }
 
                 default:
-                    return (new BinaryElementPersistenceValue(binaryElementValue.Raw, metadata.Filename, metadata.Filesize), 1);
+                    return (new BinaryElementPersistenceValue(binaryElementValue.Raw, metadata.Filename, metadata.FileSize), 1);
             }
         }
 

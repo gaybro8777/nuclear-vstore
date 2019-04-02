@@ -22,7 +22,6 @@ using NuClear.VStore.Kafka;
 using NuClear.VStore.Options;
 using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
-using NuClear.VStore.Sessions.ContentValidation;
 using NuClear.VStore.Sessions.ContentValidation.Errors;
 using NuClear.VStore.Sessions.Fetch;
 using NuClear.VStore.Sessions.Upload;
@@ -156,7 +155,7 @@ namespace NuClear.VStore.Sessions
             {
                 var sessionDescriptor = uploadSession.SessionDescriptor;
                 var elementDescriptor = uploadSession.ElementDescriptor;
-                EnsureFileHeaderIsValid(
+                BinaryValidationUtils.EnsureFileHeaderIsValid(
                     templateCode,
                     uploadSession.ElementDescriptor.Type,
                     elementDescriptor.Constraints.For(sessionDescriptor.Language),
@@ -222,18 +221,18 @@ namespace NuClear.VStore.Sessions
                     {
                         var sessionDescriptor = uploadSession.SessionDescriptor;
                         var elementDescriptor = uploadSession.ElementDescriptor;
-                        EnsureFileContentIsValid(
+                        BinaryValidationUtils.EnsureFileContentIsValid(
                             elementDescriptor.TemplateCode,
                             elementDescriptor.Type,
                             elementDescriptor.Constraints.For(sessionDescriptor.Language),
                             memoryStream,
-                            uploadSession.UploadedFileMetadata);
+                            uploadSession.UploadedFileMetadata.FileName);
                     }
 
                     var metadataWrapper = MetadataCollectionWrapper.For(getResponse.Metadata);
                     var fileName = metadataWrapper.Read<string>(MetadataElement.Filename);
 
-                    var fileExtension = Path.GetExtension(fileName).ToLowerInvariant();
+                    var fileExtension = Path.GetExtension(fileName)?.ToLowerInvariant();
                     var fileKey = Path.ChangeExtension(uploadSession.SessionId.AsS3ObjectKey(uploadResponse.ETag), fileExtension);
                     var copyRequest = new CopyObjectRequest
                         {
@@ -293,7 +292,7 @@ namespace NuClear.VStore.Sessions
             try
             {
                 var (stream, mediaType) = await _fetchClient.FetchAsync(fetchUri);
-                var fileMetadata = new GenericUploadedFileMetadata(FileType.NotSet, fetchParameters.FileName, mediaType, stream.Length);
+                var fileMetadata = new GenericUploadedFileMetadata(fetchParameters.FileName, mediaType, stream.Length);
                 uploadSession = await InitiateMultipartUploadInternal(sessionId, templateCode, fileMetadata, sessionDescriptor, expiresAt);
                 await UploadFilePart(uploadSession, stream, templateCode);
                 var fetchedFileKey = await CompleteMultipartUpload(uploadSession);
@@ -333,7 +332,7 @@ namespace NuClear.VStore.Sessions
                fetchUri.IsWellFormedOriginalString() &&
                (fetchUri.Scheme == Uri.UriSchemeHttp || fetchUri.Scheme == Uri.UriSchemeHttps);
 
-        private async Task<MultipartUploadSession> InitiateMultipartUploadInternal(
+        public async Task<MultipartUploadSession> InitiateMultipartUploadInternal(
             Guid sessionId,
             int templateCode,
             IUploadedFileMetadata uploadedFileMetadata,
@@ -353,7 +352,7 @@ namespace NuClear.VStore.Sessions
             }
 
             var elementDescriptor = await GetElementDescriptor(sessionDescriptor.TemplateId, sessionDescriptor.TemplateVersionId, templateCode);
-            EnsureFileMetadataIsValid(elementDescriptor, sessionDescriptor.Language, uploadedFileMetadata);
+            BinaryValidationUtils.EnsureFileMetadataIsValid(elementDescriptor, sessionDescriptor.Language, uploadedFileMetadata);
 
             var fileKey = Guid.NewGuid().ToString();
             var key = sessionId.AsS3ObjectKey(fileKey);
@@ -376,159 +375,6 @@ namespace NuClear.VStore.Sessions
                 uploadedFileMetadata,
                 fileKey,
                 uploadResponse.UploadId);
-        }
-
-        private static void EnsureFileMetadataIsValid(IElementDescriptor elementDescriptor, Language language, IUploadedFileMetadata uploadedFileMetadata)
-        {
-            var constraints = (IBinaryElementConstraints)elementDescriptor.Constraints.For(language);
-            if (constraints.MaxFilenameLength < uploadedFileMetadata.FileName.Length)
-            {
-                throw new InvalidBinaryException(elementDescriptor.TemplateCode, new FilenameTooLongError(uploadedFileMetadata.FileName.Length));
-            }
-
-            if (constraints.MaxSize < uploadedFileMetadata.FileLength)
-            {
-                throw new InvalidBinaryException(elementDescriptor.TemplateCode, new BinaryTooLargeError(uploadedFileMetadata.FileLength));
-            }
-
-            if (constraints is CompositeBitmapImageElementConstraints compositeBitmapImageElementConstraints &&
-                uploadedFileMetadata.FileType == FileType.SizeSpecificBitmapImage &&
-                compositeBitmapImageElementConstraints.SizeSpecificImageMaxSize < uploadedFileMetadata.FileLength)
-            {
-                throw new InvalidBinaryException(elementDescriptor.TemplateCode, new SizeSpecificImageTooLargeError(uploadedFileMetadata.FileLength));
-            }
-
-            var extension = GetDotLessExtension(uploadedFileMetadata.FileName);
-            if (!ValidateFileExtension(extension, constraints))
-            {
-                throw new InvalidBinaryException(elementDescriptor.TemplateCode, new BinaryInvalidFormatError(extension));
-            }
-        }
-
-        private static void EnsureFileHeaderIsValid(
-            int templateCode,
-            ElementDescriptorType elementDescriptorType,
-            IElementConstraints elementConstraints,
-            Stream inputStream,
-            IUploadedFileMetadata uploadedFileMetadata)
-        {
-            var fileFormat = DetectFileFormat(uploadedFileMetadata.FileName);
-            switch (elementDescriptorType)
-            {
-                case ElementDescriptorType.BitmapImage:
-                    BitmapImageValidator.ValidateBitmapImageHeader(
-                        templateCode,
-                        (BitmapImageElementConstraints)elementConstraints,
-                        fileFormat,
-                        inputStream);
-                    break;
-                case ElementDescriptorType.ScalableBitmapImage:
-                    BitmapImageValidator.ValidateSizeRangedBitmapImageHeader(
-                        templateCode,
-                        (ScalableBitmapImageElementConstraints)elementConstraints,
-                        fileFormat,
-                        inputStream);
-                    break;
-                case ElementDescriptorType.CompositeBitmapImage:
-                    if (uploadedFileMetadata.FileType == FileType.SizeSpecificBitmapImage)
-                    {
-                        var imageMetadata = (UploadedImageMetadata)uploadedFileMetadata;
-                        BitmapImageValidator.ValidateSizeSpecificBitmapImageHeader(
-                            templateCode,
-                            (CompositeBitmapImageElementConstraints)elementConstraints,
-                            fileFormat,
-                            inputStream,
-                            imageMetadata.Size);
-                    }
-                    else
-                    {
-                        BitmapImageValidator.ValidateSizeRangedBitmapImageHeader(
-                            templateCode,
-                            (CompositeBitmapImageElementConstraints)elementConstraints,
-                            fileFormat,
-                            inputStream);
-                    }
-
-                    break;
-                case ElementDescriptorType.VectorImage:
-                    VectorImageValidator.ValidateVectorImageHeader(templateCode, fileFormat, inputStream);
-                    break;
-                case ElementDescriptorType.Article:
-                    break;
-                case ElementDescriptorType.PlainText:
-                case ElementDescriptorType.FormattedText:
-                case ElementDescriptorType.FasComment:
-                case ElementDescriptorType.Link:
-                case ElementDescriptorType.Phone:
-                case ElementDescriptorType.VideoLink:
-                case ElementDescriptorType.Color:
-                    throw new NotSupportedException($"Not binary element descriptor type {elementDescriptorType}");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(elementDescriptorType), elementDescriptorType, "Unsupported element descriptor type");
-            }
-        }
-
-        private static void EnsureFileContentIsValid(
-            int templateCode,
-            ElementDescriptorType elementDescriptorType,
-            IElementConstraints elementConstraints,
-            Stream inputStream,
-            IUploadedFileMetadata uploadedFileMetadata)
-        {
-            switch (elementDescriptorType)
-            {
-                case ElementDescriptorType.BitmapImage:
-                    BitmapImageValidator.ValidateBitmapImage(templateCode, (BitmapImageElementConstraints)elementConstraints, inputStream);
-                    break;
-                case ElementDescriptorType.VectorImage:
-                    var fileFormat = DetectFileFormat(uploadedFileMetadata.FileName);
-                    VectorImageValidator.ValidateVectorImage(templateCode, fileFormat, (VectorImageElementConstraints)elementConstraints, inputStream);
-                    break;
-                case ElementDescriptorType.Article:
-                    ArticleValidator.ValidateArticle(templateCode, inputStream);
-                    break;
-                case ElementDescriptorType.CompositeBitmapImage:
-                    break;
-                case ElementDescriptorType.ScalableBitmapImage:
-                    break;
-                case ElementDescriptorType.PlainText:
-                case ElementDescriptorType.FormattedText:
-                case ElementDescriptorType.FasComment:
-                case ElementDescriptorType.Link:
-                case ElementDescriptorType.Phone:
-                case ElementDescriptorType.VideoLink:
-                case ElementDescriptorType.Color:
-                    throw new NotSupportedException($"Not binary element descriptor type {elementDescriptorType}");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(elementDescriptorType), elementDescriptorType, "Unsupported element descriptor type");
-            }
-        }
-
-        private static FileFormat DetectFileFormat(string fileName)
-        {
-            var extension = GetDotLessExtension(fileName);
-            if (Enum.TryParse(extension, true, out FileFormat format))
-            {
-                return format;
-            }
-
-            throw new ArgumentException($"Filename '{fileName}' does not have appropriate extension", nameof(fileName));
-        }
-
-        private static bool ValidateFileExtension(string extension, IBinaryElementConstraints constraints)
-        {
-            return Enum.TryParse(extension, true, out FileFormat format)
-                   && Enum.IsDefined(typeof(FileFormat), format)
-                   && format.ToString().Equals(extension, StringComparison.OrdinalIgnoreCase)
-                   && constraints.SupportedFileFormats.Any(f => f == format);
-        }
-
-        private static string GetDotLessExtension(string path)
-        {
-            var dottedExtension = Path.GetExtension(path);
-            return string.IsNullOrEmpty(dottedExtension)
-                       ? dottedExtension
-                       : dottedExtension.Trim('.').ToLowerInvariant();
         }
 
         private async Task<IElementDescriptor> GetElementDescriptor(long templateId, string templateVersionId, int templateCode)

@@ -428,7 +428,7 @@ namespace NuClear.VStore.Host.Controllers
 
             if (string.IsNullOrEmpty(rawFileType))
             {
-                uploadedFileMetadata = new GenericUploadedFileMetadata(FileType.NotSet, file.FileName, file.ContentType, file.Length);
+                uploadedFileMetadata = new GenericUploadedFileMetadata(file.FileName, file.ContentType, file.Length);
                 return true;
             }
 
@@ -447,7 +447,7 @@ namespace NuClear.VStore.Host.Controllers
                         return false;
                     }
 
-                    uploadedFileMetadata = new UploadedImageMetadata(FileType.SizeSpecificBitmapImage, file.FileName, file.ContentType, file.Length, imageSize);
+                    uploadedFileMetadata = new UploadedImageMetadata(file.FileName, file.ContentType, file.Length, imageSize);
                     return true;
                 default:
                     error = $"Unexpected '{Http.HeaderNames.AmsFileType}' header value '{fileType}'";
