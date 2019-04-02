@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -404,6 +405,107 @@ namespace NuClear.VStore.Host.Controllers
             catch (ArgumentException ex)
             {
                 return BadRequest(ex.Message);
+            }
+            catch (ObjectInconsistentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Upgrade existing object to a newer template version
+        /// </summary>
+        /// <param name="id">Object identifier</param>
+        /// <param name="ifMatch">Object version (should be latest version)</param>
+        /// <param name="modifiedElements">Template codes of actually modified elements (separated by comma)</param>
+        /// <param name="author">Author identifier</param>
+        /// <param name="authorLogin">Author login</param>
+        /// <param name="authorName">Author name</param>
+        /// <param name="objectDescriptor">JSON with object descriptor</param>
+        /// <returns>HTTP code</returns>
+        [HttpPut("{id:long}")]
+        [ProducesResponseType(204)]
+        [ProducesResponseType(typeof(string), 400)]
+        [ProducesResponseType(404)]
+        [ProducesResponseType(412)]
+        [ProducesResponseType(typeof(object), 422)]
+        [ProducesResponseType(423)]
+        public async Task<IActionResult> Upgrade(
+            long id,
+            [FromHeader(Name = HeaderNames.IfMatch)] string ifMatch,
+            [FromHeader(Name = Http.HeaderNames.AmsModifiedElements)] string modifiedElements,
+            [FromHeader(Name = Http.HeaderNames.AmsAuthor)] string author,
+            [FromHeader(Name = Http.HeaderNames.AmsAuthorLogin)] string authorLogin,
+            [FromHeader(Name = Http.HeaderNames.AmsAuthorName)] string authorName,
+            [FromBody] IObjectDescriptor objectDescriptor)
+        {
+            if (string.IsNullOrEmpty(ifMatch))
+            {
+                return BadRequest($"'{HeaderNames.IfMatch}' request header must be specified.");
+            }
+
+            var parsedModifiedElements = new List<int>();
+            if (!string.IsNullOrEmpty(modifiedElements))
+            {
+                var splitElements = modifiedElements.Split(',');
+                if (splitElements.Length < 1)
+                {
+                    return BadRequest($"'{Http.HeaderNames.AmsModifiedElements}' request header must contain at least one template code of modified element.");
+                }
+
+                foreach (var element in splitElements)
+                {
+                    var trimmedElement = element.Trim();
+                    if (!int.TryParse(trimmedElement, out var templateCode))
+                    {
+                        return BadRequest($"'{Http.HeaderNames.AmsModifiedElements}' request header contains invalid template code '{trimmedElement}'.");
+                    }
+
+                    parsedModifiedElements.Add(templateCode);
+                }
+            }
+
+            if (string.IsNullOrEmpty(author) || string.IsNullOrEmpty(authorLogin) || string.IsNullOrEmpty(authorName))
+            {
+                return BadRequest(
+                    $"'{Http.HeaderNames.AmsAuthor}', '{Http.HeaderNames.AmsAuthorLogin}' and '{Http.HeaderNames.AmsAuthorName}' " +
+                    "request headers must be specified.");
+            }
+
+            if (TryGetModelErrors(out var errors))
+            {
+                return BadRequest(errors);
+            }
+
+            try
+            {
+                var latestVersionId = await _objectsManagementService.Upgrade(
+                                          id,
+                                          ifMatch.Trim('"'),
+                                          new AuthorInfo(author, authorLogin, authorName),
+                                          parsedModifiedElements,
+                                          objectDescriptor);
+
+                var url = Url.AbsoluteAction("GetVersion", "Objects", new { id, versionId = latestVersionId });
+
+                Response.Headers[HeaderNames.ETag] = $"\"{latestVersionId}\"";
+                return NoContent(url);
+            }
+            catch (InvalidObjectException ex)
+            {
+                return Unprocessable(ex.SerializeToJson());
+            }
+            catch (ObjectNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (LockAlreadyExistsException)
+            {
+                return Locked("Simultaneous modification of object");
+            }
+            catch (ConcurrencyException)
+            {
+                return PreconditionFailed();
             }
             catch (ObjectInconsistentException ex)
             {

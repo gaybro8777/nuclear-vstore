@@ -8,6 +8,7 @@
         public const string AmsContinuationToken = "x-ams-continuation-token";
         public const string AmsFileType = "x-ams-file-type";
         public const string AmsImageSize = "x-ams-image-size";
+        public const string AmsModifiedElements = "x-ams-modified-elements";
         public const string RequestId = "x-request-id";
         public const string Server = "x-server";
     }

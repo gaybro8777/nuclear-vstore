@@ -72,7 +72,7 @@ namespace NuClear.VStore.Objects
 
         public async Task<string> Create(long id, AuthorInfo authorInfo, IObjectDescriptor objectDescriptor)
         {
-            CheckRequredProperties(id, objectDescriptor);
+            CheckRequiredProperties(id, objectDescriptor);
 
             using (await _distributedLockManager.AcquireLockAsync(id))
             {
@@ -103,7 +103,7 @@ namespace NuClear.VStore.Objects
 
         public async Task<string> Modify(long id, string versionId, AuthorInfo authorInfo, IObjectDescriptor modifiedObjectDescriptor)
         {
-            CheckRequredProperties(id, modifiedObjectDescriptor);
+            CheckRequiredProperties(id, modifiedObjectDescriptor);
 
             if (string.IsNullOrEmpty(versionId))
             {
@@ -113,19 +113,26 @@ namespace NuClear.VStore.Objects
             using (await _distributedLockManager.AcquireLockAsync(id))
             {
                 var objectDescriptor = await _objectsStorageReader.GetObjectDescriptor(id, null, CancellationToken.None);
-                if (objectDescriptor == null)
-                {
-                    throw new ObjectNotFoundException($"Object '{id}' not found.");
-                }
-
                 if (!versionId.Equals(objectDescriptor.VersionId, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new ConcurrencyException(id, versionId, objectDescriptor.VersionId);
                 }
 
-                var currentTemplateIds = new HashSet<long>(objectDescriptor.Elements.Select(x => x.Id));
-                var modifiedTemplateIds = new HashSet<long>(modifiedObjectDescriptor.Elements.Select(x => x.Id));
-                if (!modifiedTemplateIds.IsSubsetOf(currentTemplateIds))
+                if (modifiedObjectDescriptor.TemplateId != objectDescriptor.TemplateId)
+                {
+                    throw new ObjectInconsistentException(
+                        id,
+                        $"Modified and latest objects templates do not match ({modifiedObjectDescriptor.TemplateId} and {objectDescriptor.TemplateId}).");
+                }
+
+                var modifiedElementsIds = new HashSet<long>(modifiedObjectDescriptor.Elements.Select(x => x.Id));
+                if (modifiedElementsIds.Count != modifiedObjectDescriptor.Elements.Count)
+                {
+                    throw new ObjectInconsistentException(id, "Some elements have non-unique identifiers.");
+                }
+
+                var currentElementsIds = new HashSet<long>(objectDescriptor.Elements.Select(x => x.Id));
+                if (!modifiedElementsIds.IsSubsetOf(currentElementsIds))
                 {
                     throw new ObjectInconsistentException(id, "Modified object contains non-existing elements.");
                 }
@@ -133,6 +140,66 @@ namespace NuClear.VStore.Objects
                 EnsureObjectElementsState(id, objectDescriptor.Elements, modifiedObjectDescriptor.Elements);
 
                 return await PutObject(id, versionId, authorInfo, objectDescriptor.Elements, modifiedObjectDescriptor);
+            }
+        }
+
+        public async Task<string> Upgrade(
+            long id,
+            string versionId,
+            AuthorInfo authorInfo,
+            IReadOnlyCollection<int> modifiedElementsTemplateCodes,
+            IObjectDescriptor upgradedObjectDescriptor)
+        {
+            CheckRequiredProperties(id, upgradedObjectDescriptor);
+
+            if (string.IsNullOrEmpty(versionId))
+            {
+                throw new ObjectInconsistentException(id, "Object version must be set");
+            }
+
+            using (await _distributedLockManager.AcquireLockAsync(id))
+            {
+                var latestObjectDescriptor = await _objectsStorageReader.GetObjectDescriptor(id, null, CancellationToken.None);
+                if (!versionId.Equals(latestObjectDescriptor.VersionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ConcurrencyException(id, versionId, latestObjectDescriptor.VersionId);
+                }
+
+                if (upgradedObjectDescriptor.TemplateId != latestObjectDescriptor.TemplateId)
+                {
+                    throw new ObjectUpgradeException(
+                        id,
+                        $"Upgraded and latest objects templates do not match ({upgradedObjectDescriptor.TemplateId} and {latestObjectDescriptor.TemplateId}).");
+                }
+
+                if (upgradedObjectDescriptor.TemplateVersionId.Equals(latestObjectDescriptor.TemplateVersionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ObjectUpgradeException(id, "Upgraded and latest objects template versions do not differ.");
+                }
+
+                var upgradedObjectTemplateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(upgradedObjectDescriptor.TemplateId, upgradedObjectDescriptor.TemplateVersionId);
+                if (upgradedObjectTemplateDescriptor.Elements.Count != upgradedObjectDescriptor.Elements.Count)
+                {
+                    throw new ObjectInconsistentException(
+                        id,
+                        $"Quantity of elements in the object doesn't match to the quantity of elements in the corresponding template with Id '{upgradedObjectTemplateDescriptor.Id}' and versionId '{upgradedObjectTemplateDescriptor.VersionId}'.");
+                }
+
+                var templateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(latestObjectDescriptor.TemplateId, latestObjectDescriptor.TemplateVersionId);
+                if (templateDescriptor.LastModified > upgradedObjectTemplateDescriptor.LastModified)
+                {
+                    throw new ObjectUpgradeException(id, "Upgraded object template must be newer than latest object template.");
+                }
+
+                var upgradedElementsIds = new HashSet<long>(upgradedObjectDescriptor.Elements.Select(x => x.Id));
+                if (!upgradedElementsIds.Overlaps(latestObjectDescriptor.Elements.Select(x => x.Id)))
+                {
+                    throw new ObjectUpgradeException(id, "Upgraded object contains non-existing elements.");
+                }
+
+                EnsureObjectElementsState(id, upgradedObjectTemplateDescriptor.Elements, upgradedObjectDescriptor.Elements);
+
+                return await PutObject(id, versionId, authorInfo, latestObjectDescriptor.Elements, upgradedObjectDescriptor, modifiedElementsTemplateCodes);
             }
         }
 
@@ -171,7 +238,7 @@ namespace NuClear.VStore.Objects
             }
         }
 
-        private static void CheckRequredProperties(long id, IObjectPersistenceDescriptor objectDescriptor)
+        private static void CheckRequiredProperties(long id, IObjectPersistenceDescriptor objectDescriptor)
         {
             if (id <= 0)
             {
@@ -287,7 +354,8 @@ namespace NuClear.VStore.Objects
             string versionId,
             AuthorInfo authorInfo,
             IEnumerable<IObjectElementDescriptor> currentObjectElements,
-            IObjectDescriptor objectDescriptor)
+            IObjectDescriptor objectDescriptor,
+            IEnumerable<int> modifiedElementsTemplateCodes = null)
         {
             PreprocessObjectElements(objectDescriptor.Elements);
             await VerifyObjectElementsConsistency(id, objectDescriptor.Language, objectDescriptor.Elements);
@@ -346,7 +414,7 @@ namespace NuClear.VStore.Objects
             metadataWrapper.Write(MetadataElement.AuthorName, authorInfo.AuthorName);
             metadataWrapper.Write(
                 MetadataElement.ModifiedElements,
-                string.Join(Tokens.ModifiedElementsDelimiter.ToString(), objectDescriptor.Elements.Select(x => x.TemplateCode)));
+                string.Join(Tokens.ModifiedElementsDelimiter.ToString(), modifiedElementsTemplateCodes ?? objectDescriptor.Elements.Select(x => x.TemplateCode)));
 
             await _s3Client.PutObjectAsync(putRequest);
             _referencedBinariesMetric.Inc(totalBinariesCount);

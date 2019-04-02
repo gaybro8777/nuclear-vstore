@@ -153,7 +153,7 @@ namespace NuClear.VStore.Renderer.Controllers
         }
 
         /// <summary>
-        /// Get slalable image preview
+        /// Get scalable image preview
         /// </summary>
         /// <param name="id">Object identifier</param>
         /// <param name="versionId">Object version</param>

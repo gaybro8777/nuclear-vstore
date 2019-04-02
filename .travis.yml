@@ -1,7 +1,7 @@
 language: csharp
 solution: VStore.sln
 os: linux
-dist: trusty # Ubuntu 14.04
+dist: xenial # Ubuntu 16.04
 mono: none
 dotnet: 2.1
 script:

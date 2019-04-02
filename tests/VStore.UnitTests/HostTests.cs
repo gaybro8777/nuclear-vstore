@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -100,9 +101,8 @@ namespace VStore.UnitTests
         }
 
         [Fact]
-        public async Task TestAmbigiousRoutes()
+        public async Task TestAmbiguousRoutes()
         {
-            _mockObjectsStorageReader.Reset();
             _mockObjectsStorageReader.Setup(x => x.GetObjectDescriptor(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                                      .ThrowsAsync(new ObjectNotFoundException(string.Empty));
 
@@ -123,8 +123,6 @@ namespace VStore.UnitTests
                 Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
                 _mockObjectsStorageReader.Verify(x => x.GetObjectVersionsMetadata(ObjectId, It.Is<string>(p => string.IsNullOrEmpty(p))), Times.Exactly(1));
             }
-
-            _mockObjectsStorageReader.Reset();
         }
 
         [Fact]
@@ -175,7 +173,6 @@ namespace VStore.UnitTests
                         }
                 };
 
-            _mockObjectsStorageReader.Reset();
             _mockObjectsStorageReader.Setup(x => x.GetObjectDescriptor(It.IsAny<long>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                                      .ReturnsAsync(descriptor);
 
@@ -208,8 +205,6 @@ namespace VStore.UnitTests
                     Assert.Equal(((IObjectElementRawValue)expected.Value).Raw, actual["value"]["raw"]);
                 }
             }
-
-            _mockObjectsStorageReader.Reset();
         }
 
         [Fact]
@@ -220,7 +215,6 @@ namespace VStore.UnitTests
             var authorInfo = new AuthorInfo("id", "login", "name");
             IObjectDescriptor receivedDescriptor = null;
 
-            _mockObjectsManagementService.Reset();
             _mockObjectsManagementService.Setup(x => x.Create(It.IsAny<long>(), It.IsAny<AuthorInfo>(), It.IsAny<IObjectDescriptor>()))
                                          .Callback<long, AuthorInfo, IObjectDescriptor>((id, author, descriptor) => receivedDescriptor = descriptor)
                                          .ReturnsAsync(CreatedObjectVersion);
@@ -288,8 +282,6 @@ namespace VStore.UnitTests
                     }
                 }
             }
-
-            _mockObjectsManagementService.Reset();
         }
 
         [Theory]
@@ -304,7 +296,6 @@ namespace VStore.UnitTests
         [InlineData(@"{ ""elements"": [{""id"": 1,""type"": ""plainText"",""templateCode"": 1,""properties"": { } }] }")]
         public async Task TestIncorrectObjectDeserialization(string json)
         {
-            _mockObjectsManagementService.Reset();
             using (var httpContent = new StringContent(json, Encoding.UTF8, NuClear.VStore.Http.ContentType.Json))
             {
                 using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/1.0/objects/100500"))
@@ -321,14 +312,59 @@ namespace VStore.UnitTests
                     }
                 }
             }
+        }
 
-            _mockObjectsManagementService.Reset();
+        [Theory]
+        [InlineData(",")]
+        [InlineData(" ")]
+        [InlineData("1,")]
+        [InlineData("1,2,a")]
+        [InlineData(",2")]
+        [InlineData("a")]
+        [InlineData("_")]
+        [InlineData("+")]
+        [InlineData("Ъ")]
+        public async Task TestObjectUpgradeWithModifiedElemsIncorrectHeader(string header)
+        {
+            const string ObjectJson =
+@"{
+    ""templateId"": ""200502"",
+    ""templateVersionId"": ""hxRQGIv7qfw3oZJcqbspYvWK7AAXCFi"",
+    ""properties"": { },
+    ""language"": ""en"",
+    ""elements"": []
+}";
+
+            using (var httpContent = new StringContent(ObjectJson, Encoding.UTF8, NuClear.VStore.Http.ContentType.Json))
+            {
+                using (var request = new HttpRequestMessage(HttpMethod.Put, "/api/1.0/objects/100500"))
+                {
+                    request.Content = httpContent;
+                    request.Headers.IfMatch.Add(new EntityTagHeaderValue("\"versionId\""));
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthor, "id");
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthorLogin, "login");
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsAuthorName, "name");
+                    request.Headers.Add(NuClear.VStore.Http.HeaderNames.AmsModifiedElements, header);
+                    using (var response = await _client.SendAsync(request))
+                    {
+                        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+                        _mockObjectsManagementService.Verify(x => x.Upgrade(It.IsAny<long>(),
+                                                                            It.IsAny<string>(),
+                                                                            It.IsAny<AuthorInfo>(),
+                                                                            It.IsAny<IReadOnlyCollection<int>>(),
+                                                                            It.IsAny<IObjectDescriptor>()),
+                                                             Times.Never());
+
+                        _testOutputHelper.WriteLine(await response.Content.ReadAsStringAsync());
+                    }
+                }
+            }
         }
 
         public void Dispose()
         {
-            _server?.Dispose();
             _client?.Dispose();
+            _server?.Dispose();
         }
     }
 }

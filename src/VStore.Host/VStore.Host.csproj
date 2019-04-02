@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>netcoreapp2.0</TargetFramework>
-    <RuntimeFrameworkVersion>2.0.7</RuntimeFrameworkVersion>
+    <RuntimeFrameworkVersion>2.0.9</RuntimeFrameworkVersion>
     <RootNamespace>NuClear.VStore.Host</RootNamespace>
     <RuntimeIdentifiers>win10-x64;osx.10.12-x64</RuntimeIdentifiers>
     <ServerGarbageCollection>false</ServerGarbageCollection>
