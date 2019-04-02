@@ -17,7 +17,7 @@
     },
     "VStore.Host": {
       "commandName": "Project",
-      "launchBrowser": true,
+      "launchBrowser": false,
       "applicationUrl": "http://localhost:5000",
       "launchUrl": "http://localhost:5000/swagger",
       "environmentVariables": {

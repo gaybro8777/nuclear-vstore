@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Amazon.S3;
 using Amazon.S3.Model;
 
+using Microsoft.Extensions.Logging;
+
 using Newtonsoft.Json;
 
 using NuClear.VStore.DataContract;
@@ -29,6 +31,7 @@ using NuClear.VStore.Options;
 using NuClear.VStore.Prometheus;
 using NuClear.VStore.S3;
 using NuClear.VStore.Sessions;
+using NuClear.VStore.Sessions.ContentValidation.Errors;
 using NuClear.VStore.Sessions.Upload;
 using NuClear.VStore.Templates;
 
@@ -38,6 +41,7 @@ namespace NuClear.VStore.Objects
 {
     public sealed class ObjectsManagementService : IObjectsManagementService
     {
+        private readonly ILogger<ObjectsManagementService> _logger;
         private readonly IS3Client _s3Client;
         private readonly ITemplatesStorageReader _templatesStorageReader;
         private readonly IObjectsStorageReader _objectsStorageReader;
@@ -50,6 +54,7 @@ namespace NuClear.VStore.Objects
         private readonly Counter _referencedBinariesMetric;
 
         public ObjectsManagementService(
+            ILogger<ObjectsManagementService> logger,
             CephOptions cephOptions,
             KafkaOptions kafkaOptions,
             IS3Client s3Client,
@@ -60,6 +65,7 @@ namespace NuClear.VStore.Objects
             IEventSender eventSender,
             MetricsProvider metricsProvider)
         {
+            _logger = logger;
             _s3Client = s3Client;
             _templatesStorageReader = templatesStorageReader;
             _objectsStorageReader = objectsStorageReader;
@@ -157,7 +163,7 @@ namespace NuClear.VStore.Objects
 
                 EnsureObjectElementsState(id, objectDescriptor.Elements, modifiedObjectDescriptor.Elements);
 
-                return await PutObject(id, versionId, authorInfo, objectDescriptor.Elements, modifiedObjectDescriptor);
+                return await PutObject(id, versionId, authorInfo, objectDescriptor.Elements, modifiedObjectDescriptor, currentElementsIds);
             }
         }
 
@@ -202,6 +208,12 @@ namespace NuClear.VStore.Objects
                         $"Upgraded and latest objects languages do not match ({upgradedObjectDescriptor.Language} and {latestObjectDescriptor.Language}).");
                 }
 
+                var upgradedObjectElementIds = new HashSet<long>(upgradedObjectDescriptor.Elements.Select(x => x.Id));
+                if (upgradedObjectElementIds.Count != upgradedObjectDescriptor.Elements.Count)
+                {
+                    throw new ObjectInconsistentException(id, "Some elements have non-unique identifiers.");
+                }
+
                 var upgradedObjectTemplateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(upgradedObjectDescriptor.TemplateId, upgradedObjectDescriptor.TemplateVersionId);
                 if (upgradedObjectTemplateDescriptor.Elements.Count != upgradedObjectDescriptor.Elements.Count)
                 {
@@ -210,30 +222,49 @@ namespace NuClear.VStore.Objects
                         $"Quantity of elements in the object doesn't match to the quantity of elements in the corresponding template with Id '{upgradedObjectTemplateDescriptor.Id}' and versionId '{upgradedObjectTemplateDescriptor.VersionId}'.");
                 }
 
-                var templateDescriptor = await _templatesStorageReader.GetTemplateDescriptor(latestObjectDescriptor.TemplateId, latestObjectDescriptor.TemplateVersionId);
-                if (templateDescriptor.LastModified > upgradedObjectTemplateDescriptor.LastModified)
-                {
-                    throw new ObjectUpgradeException(id, "Upgraded object template must be newer than latest object template.");
-                }
-
-                var upgradedElementsIds = new HashSet<long>(upgradedObjectDescriptor.Elements.Select(x => x.Id));
-                if (!upgradedElementsIds.Overlaps(latestObjectDescriptor.Elements.Select(x => x.Id)))
-                {
-                    throw new ObjectUpgradeException(id, "Upgraded object contains non-existing elements.");
-                }
+                await EnsureTemplateVersionIsNewer(upgradedObjectTemplateDescriptor.Id, upgradedObjectTemplateDescriptor.VersionId, latestObjectDescriptor.TemplateVersionId);
 
                 EnsureObjectElementsState(id, upgradedObjectTemplateDescriptor.Elements, upgradedObjectDescriptor.Elements);
-                await EnsureBinaryElementsAreValid(upgradedObjectDescriptor);
 
-                return await PutObject(id, versionId, authorInfo, latestObjectDescriptor.Elements, upgradedObjectDescriptor, modifiedElementsTemplateCodes);
+                return await PutObject(id, versionId, authorInfo, latestObjectDescriptor.Elements, upgradedObjectDescriptor, upgradedObjectElementIds, modifiedElementsTemplateCodes);
             }
         }
 
-        private async Task EnsureBinaryElementsAreValid(IObjectDescriptor objectDescriptor)
+        private async Task EnsureTemplateVersionIsNewer(long id, string versionIdToBeNewer, string versionIdToBeOlder)
         {
-            foreach (var binaryElement in objectDescriptor.Elements.GetBinaryElements())
+            var templateVersions = await _templatesStorageReader.GetTemplateVersions(id);
+            var newerVersion = templateVersions.FirstOrDefault(x => x.VersionId == versionIdToBeNewer);
+            var olderVersion = templateVersions.FirstOrDefault(x => x.VersionId == versionIdToBeOlder);
+            if (newerVersion == null)
             {
-                var constraints = binaryElement.Constraints.For(objectDescriptor.Language);
+                _logger.LogCritical("Template {id} doesn't have version {version}", id, versionIdToBeNewer);
+                throw new InvalidOperationException($"Template {id} doesn't have version {versionIdToBeNewer}");
+            }
+
+            if (olderVersion == null)
+            {
+                _logger.LogCritical("Template {id} doesn't have version {version}", id, versionIdToBeOlder);
+                throw new InvalidOperationException($"Template {id} doesn't have version {versionIdToBeOlder}");
+            }
+
+            if (newerVersion.VersionIndex <= olderVersion.VersionIndex)
+            {
+                throw new ObjectUpgradeException(
+                    id,
+                    $"Upgraded object template {id} version must be newer than latest object template version " +
+                    $"('{newerVersion.VersionId}' with index {newerVersion.VersionIndex} and '{olderVersion.VersionId}' with index {olderVersion.VersionIndex} respectively).");
+            }
+        }
+
+        private async Task<IReadOnlyDictionary<int, IReadOnlyCollection<BinaryValidationError>>> VerifyObjectBinaryElementsConsistency(
+                Language language,
+                IReadOnlyCollection<IObjectElementDescriptor> elements)
+        {
+            var errors = new Dictionary<int, IReadOnlyCollection<BinaryValidationError>>();
+            foreach (var binaryElement in elements.GetBinaryElements())
+            {
+                var elementErrors = new List<BinaryValidationError>();
+                var constraints = binaryElement.Constraints.For(language);
                 var fileKeys = binaryElement.Value.ExtractFileKeys();
                 foreach (var fileKey in fileKeys)
                 {
@@ -242,7 +273,7 @@ namespace NuClear.VStore.Objects
                         var memoryStream = new MemoryStream();
                         using (getResponse.ResponseStream)
                         {
-                            getResponse.ResponseStream.CopyTo(memoryStream);
+                            await getResponse.ResponseStream.CopyToAsync(memoryStream);
                             memoryStream.Position = 0;
                         }
 
@@ -266,13 +297,27 @@ namespace NuClear.VStore.Objects
                                 binaryMetadata = new GenericUploadedFileMetadata(fileName, getResponse.Headers.ContentType, getResponse.ContentLength);
                             }
 
-                            BinaryValidationUtils.EnsureFileMetadataIsValid(binaryElement, objectDescriptor.Language, binaryMetadata);
-                            BinaryValidationUtils.EnsureFileHeaderIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, binaryMetadata);
-                            BinaryValidationUtils.EnsureFileContentIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, fileName);
+                            try
+                            {
+                                BinaryValidationUtils.EnsureFileMetadataIsValid(binaryElement, language, binaryMetadata);
+                                BinaryValidationUtils.EnsureFileHeaderIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, binaryMetadata);
+                                BinaryValidationUtils.EnsureFileContentIsValid(binaryElement.TemplateCode, binaryElement.Type, constraints, memoryStream, fileName);
+                            }
+                            catch (InvalidBinaryException e)
+                            {
+                                elementErrors.Add(e.Error);
+                            }
                         }
                     }
                 }
+
+                if (elementErrors.Count > 0)
+                {
+                    errors[binaryElement.TemplateCode] = elementErrors;
+                }
             }
+
+            return errors;
         }
 
         private static void EnsureObjectElementsState(
@@ -338,8 +383,7 @@ namespace NuClear.VStore.Objects
             }
         }
 
-        private static async Task VerifyObjectElementsConsistency(
-            long objectId,
+        private static async Task<IReadOnlyDictionary<int, IReadOnlyCollection<ObjectElementValidationError>>> VerifyObjectElementsConsistency(
             Language language,
             IEnumerable<IObjectElementDescriptor> elementDescriptors)
         {
@@ -365,10 +409,7 @@ namespace NuClear.VStore.Objects
 
             await Task.WhenAll(tasks);
 
-            if (allErrors.Count > 0)
-            {
-                throw new InvalidObjectException(objectId, allErrors);
-            }
+            return allErrors;
         }
 
         private static IEnumerable<ValidationRule> GetValidationRules(IObjectElementDescriptor descriptor)
@@ -427,24 +468,36 @@ namespace NuClear.VStore.Objects
             AuthorInfo authorInfo,
             IEnumerable<IObjectElementDescriptor> currentObjectElements,
             IObjectDescriptor objectDescriptor,
+            IReadOnlyCollection<long> objectElementIdsToSave = null,
             IEnumerable<int> modifiedElementsTemplateCodes = null)
         {
             PreprocessObjectElements(objectDescriptor.Elements);
-            await VerifyObjectElementsConsistency(id, objectDescriptor.Language, objectDescriptor.Elements);
-            var metadataForBinaries = await RetrieveMetadataForBinaries(id, currentObjectElements, objectDescriptor.Elements);
+            var nonBinaryErrors = await VerifyObjectElementsConsistency(objectDescriptor.Language, objectDescriptor.Elements);
+            var (metadataForBinaries, binaryMetadataErrors) = await RetrieveMetadataForBinaries(currentObjectElements, objectDescriptor.Elements);
+            if (binaryMetadataErrors.Count > 0)
+            {
+                var mergedErrors = nonBinaryErrors.Concat(binaryMetadataErrors)
+                                                  .GroupBy(x => x.Key, x => x.Value)
+                                                  .ToDictionary(x => x.Key, x => (IReadOnlyCollection<ObjectElementValidationError>)x.SelectMany(y => y).ToList());
+
+                throw new InvalidObjectException(id, mergedErrors);
+            }
+
+            var binaryErrors = await VerifyObjectBinaryElementsConsistency(objectDescriptor.Language, objectDescriptor.Elements);
+            if (nonBinaryErrors.Count > 0 || binaryErrors.Count > 0)
+            {
+                throw new InvalidObjectException(id, nonBinaryErrors, binaryErrors);
+            }
 
             await _eventSender.SendAsync(_objectEventsTopic, new ObjectVersionCreatingEvent(id, versionId));
 
             var totalBinariesCount = 0;
-            PutObjectRequest putRequest;
-            MetadataCollectionWrapper metadataWrapper;
-
             foreach (var elementDescriptor in objectDescriptor.Elements)
             {
                 var (elementPersistenceValue, binariesCount) = ConvertToPersistenceValue(elementDescriptor.Value, metadataForBinaries);
                 var elementPersistenceDescriptor = new ObjectElementPersistenceDescriptor(elementDescriptor, elementPersistenceValue);
                 totalBinariesCount += binariesCount;
-                putRequest = new PutObjectRequest
+                var request = new PutObjectRequest
                     {
                         Key = id.AsS3ObjectKey(elementDescriptor.Id),
                         BucketName = _bucketName,
@@ -453,16 +506,23 @@ namespace NuClear.VStore.Objects
                         CannedACL = S3CannedACL.PublicRead
                     };
 
-                metadataWrapper = MetadataCollectionWrapper.For(putRequest.Metadata);
-                metadataWrapper.Write(MetadataElement.Author, authorInfo.Author);
-                metadataWrapper.Write(MetadataElement.AuthorLogin, authorInfo.AuthorLogin);
-                metadataWrapper.Write(MetadataElement.AuthorName, authorInfo.AuthorName);
+                var elementMetadataWrapper = MetadataCollectionWrapper.For(request.Metadata);
+                elementMetadataWrapper.Write(MetadataElement.Author, authorInfo.Author);
+                elementMetadataWrapper.Write(MetadataElement.AuthorLogin, authorInfo.AuthorLogin);
+                elementMetadataWrapper.Write(MetadataElement.AuthorName, authorInfo.AuthorName);
 
-                await _s3Client.PutObjectAsync(putRequest);
+                await _s3Client.PutObjectAsync(request);
             }
 
             var objectKey = id.AsS3ObjectKey(Tokens.ObjectPostfix);
             var elementVersions = await _objectsStorageReader.GetObjectElementsLatestVersions(id);
+            if (objectElementIdsToSave != null)
+            {
+                var objectElementKeysToSave = new HashSet<string>(objectElementIdsToSave.Select(x => id.AsS3ObjectKey(x)));
+                elementVersions = elementVersions.Where(x => objectElementKeysToSave.Contains(x.Id))
+                                                 .ToList();
+            }
+
             var objectPersistenceDescriptor = new ObjectPersistenceDescriptor
                 {
                     TemplateId = objectDescriptor.TemplateId,
@@ -471,7 +531,8 @@ namespace NuClear.VStore.Objects
                     Properties = objectDescriptor.Properties,
                     Elements = elementVersions
                 };
-            putRequest = new PutObjectRequest
+
+            var putRequest = new PutObjectRequest
                 {
                     Key = objectKey,
                     BucketName = _bucketName,
@@ -480,7 +541,7 @@ namespace NuClear.VStore.Objects
                     CannedACL = S3CannedACL.PublicRead
                 };
 
-            metadataWrapper = MetadataCollectionWrapper.For(putRequest.Metadata);
+            var metadataWrapper = MetadataCollectionWrapper.For(putRequest.Metadata);
             metadataWrapper.Write(MetadataElement.Author, authorInfo.Author);
             metadataWrapper.Write(MetadataElement.AuthorLogin, authorInfo.AuthorLogin);
             metadataWrapper.Write(MetadataElement.AuthorName, authorInfo.AuthorName);
@@ -592,10 +653,10 @@ namespace NuClear.VStore.Objects
             }
         }
 
-        private async Task<IReadOnlyDictionary<string, BinaryMetadata>> RetrieveMetadataForBinaries(
-            long id,
-            IEnumerable<IObjectElementDescriptor> existingObjectElements,
-            IEnumerable<IObjectElementDescriptor> objectElements)
+        private async Task<(IReadOnlyDictionary<string, BinaryMetadata> resultMetadata, IReadOnlyDictionary<int, IReadOnlyCollection<ObjectElementValidationError>> errors)>
+            RetrieveMetadataForBinaries(
+                IEnumerable<IObjectElementDescriptor> existingObjectElements,
+                IEnumerable<IObjectElementDescriptor> objectElements)
         {
             var existingFileKeys = new HashSet<string>(existingObjectElements.SelectMany(x => x.Value.ExtractFileKeys()));
             var fileKeysToElementsMap = objectElements.SelectMany(x => x.Value
@@ -632,14 +693,11 @@ namespace NuClear.VStore.Objects
                                 .GroupBy(x => x.TemplateCode, x => x.Error)
                                 .ToDictionary(x => x.Key, x => (IReadOnlyCollection<ObjectElementValidationError>)x.ToList());
 
-            if (errors.Count > 0)
-            {
-                throw new InvalidObjectException(id, errors);
-            }
+            var resultMetadata = results.Where(x => x.Metadata != null)
+                                  .GroupBy(x => x.FileKey)
+                                  .ToDictionary(x => x.Key, x => x.First().Metadata);
 
-            return results.Where(x => x.Metadata != null)
-                          .GroupBy(x => x.FileKey)
-                          .ToDictionary(x => x.Key, x => x.First().Metadata);
+            return (resultMetadata, errors);
         }
     }
 }

@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Amazon.S3.Model;
 
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 
 using Moq;
 
@@ -56,6 +59,7 @@ namespace VStore.UnitTests.Persistence
             var sessionStorageReader = new SessionStorageReader(cephOptions, _cephS3ClientMock.Object, _memoryCache);
 
             _objectsManagementService = new ObjectsManagementService(
+                Mock.Of<ILogger<ObjectsManagementService>>(),
                 cephOptions,
                 new KafkaOptions(),
                 _s3ClientMock.Object,
@@ -457,7 +461,11 @@ namespace VStore.UnitTests.Persistence
         {
             const int TemplateCode = 100;
             const Language Language = Language.Ru;
-            var constraints = new CompositeBitmapImageElementConstraints();
+            var constraints = new CompositeBitmapImageElementConstraints
+                {
+                    SupportedFileFormats = new List<FileFormat> { FileFormat.Png },
+                    ImageSizeRange = new ImageSizeRange { Min = ImageSize.Empty, Max = new ImageSize { Width = 500, Height = 500 } }
+                };
 
             var templateDescriptor = new TemplateDescriptor
                 {
@@ -501,7 +509,20 @@ namespace VStore.UnitTests.Persistence
                          .Callback<PutObjectRequest>(request => requests.Add(request))
                          .ReturnsAsync(new PutObjectResponse());
 
+            var memoryStream = new MemoryStream();
+            using (var stream = File.OpenRead(Path.Combine("images", "64x48.png")))
+            {
+                await stream.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+            }
+
             var fileKey = Guid.NewGuid().AsS3ObjectKey("key.raw");
+            var getObjectResponse = new GetObjectResponse { ResponseStream = memoryStream };
+            metadataWrapper = MetadataCollectionWrapper.For(getObjectResponse.Metadata);
+            metadataWrapper.Write(MetadataElement.Filename, "file name.png");
+            _s3ClientMock.Setup(m => m.GetObjectAsync(It.IsAny<string>(), fileKey, It.IsAny<CancellationToken>()))
+                         .ReturnsAsync(getObjectResponse);
+
             var objectDescriptor = new ObjectDescriptor
                 {
                     Language = Language,
@@ -547,7 +568,11 @@ namespace VStore.UnitTests.Persistence
             const int TemplateCode = 100;
             const Language Language = Language.Ru;
             const Anchor Anchor = Anchor.Top;
-            var constraints = new ScalableBitmapImageElementConstraints();
+            var constraints = new ScalableBitmapImageElementConstraints
+                {
+                    SupportedFileFormats = new List<FileFormat> { FileFormat.Png },
+                    ImageSizeRange = new ImageSizeRange { Min = ImageSize.Empty, Max = new ImageSize { Width = 500, Height = 500 } }
+                };
 
             var templateDescriptor = new TemplateDescriptor
                 {
@@ -591,7 +616,20 @@ namespace VStore.UnitTests.Persistence
                          .Callback<PutObjectRequest>(request => requests.Add(request))
                          .ReturnsAsync(new PutObjectResponse());
 
+            var memoryStream = new MemoryStream();
+            using (var stream = File.OpenRead(Path.Combine("images", "64x48.png")))
+            {
+                await stream.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+            }
+
             var fileKey = Guid.NewGuid().AsS3ObjectKey("key.raw");
+            var getObjectResponse = new GetObjectResponse { ResponseStream = memoryStream };
+            metadataWrapper = MetadataCollectionWrapper.For(getObjectResponse.Metadata);
+            metadataWrapper.Write(MetadataElement.Filename, "file name.png");
+            _s3ClientMock.Setup(m => m.GetObjectAsync(It.IsAny<string>(), fileKey, It.IsAny<CancellationToken>()))
+                         .ReturnsAsync(getObjectResponse);
+
             var objectDescriptor = new ObjectDescriptor
                 {
                     Language = Language,
@@ -634,7 +672,11 @@ namespace VStore.UnitTests.Persistence
         {
             const int TemplateCode = 100;
             const Language Language = Language.Ru;
-            var constraints = new ScalableBitmapImageElementConstraints();
+            var constraints = new ScalableBitmapImageElementConstraints
+                {
+                    SupportedFileFormats = new List<FileFormat> { FileFormat.Png },
+                    ImageSizeRange = new ImageSizeRange { Min = ImageSize.Empty, Max = new ImageSize { Width = 500, Height = 500 } }
+                };
 
             var templateDescriptor = new TemplateDescriptor
                 {
@@ -655,9 +697,9 @@ namespace VStore.UnitTests.Persistence
                 };
 
             _objectsStorageReaderMock.Setup(m => m.IsObjectExists(ObjectId))
-                                     .ReturnsAsync(() => false);
+                                     .ReturnsAsync(false);
             _templatesStorageReaderMock.Setup(m => m.GetTemplateDescriptor(TemplateId, TemplateVersionId))
-                                       .ReturnsAsync(() => templateDescriptor);
+                                       .ReturnsAsync(templateDescriptor);
             _objectsStorageReaderMock.Setup(m => m.GetObjectLatestVersion(It.IsAny<long>()))
                                      .ReturnsAsync(
                                          new VersionedObjectDescriptor<string>(
@@ -671,14 +713,27 @@ namespace VStore.UnitTests.Persistence
             metadataWrapper.Write(MetadataElement.ExpiresAt, DateTime.UtcNow.AddDays(1));
 
             _cephS3ClientMock.Setup(m => m.GetObjectMetadataAsync(It.IsAny<string>(), It.IsAny<string>()))
-                             .ReturnsAsync(() => response);
+                             .ReturnsAsync(response);
+
+            var memoryStream = new MemoryStream();
+            using (var stream = File.OpenRead(Path.Combine("images", "64x48.png")))
+            {
+                await stream.CopyToAsync(memoryStream);
+                memoryStream.Position = 0;
+            }
+
+            var fileKey = Guid.NewGuid().AsS3ObjectKey("key.raw");
+            var getObjectResponse = new GetObjectResponse { ResponseStream = memoryStream };
+            metadataWrapper = MetadataCollectionWrapper.For(getObjectResponse.Metadata);
+            metadataWrapper.Write(MetadataElement.Filename, "file name.png");
+            _s3ClientMock.Setup(m => m.GetObjectAsync(It.IsAny<string>(), fileKey, It.IsAny<CancellationToken>()))
+                         .ReturnsAsync(getObjectResponse);
 
             var requests = new List<PutObjectRequest>();
             _s3ClientMock.Setup(m => m.PutObjectAsync(It.IsAny<PutObjectRequest>()))
                          .Callback<PutObjectRequest>(request => requests.Add(request))
                          .ReturnsAsync(new PutObjectResponse());
 
-            var fileKey = Guid.NewGuid().AsS3ObjectKey("key.raw");
             var objectDescriptor = new ObjectDescriptor
                 {
                     Language = Language,
